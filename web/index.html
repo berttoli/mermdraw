@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mmdr</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='4' width='12' height='9' rx='2' fill='%234f6bed'/%3E%3Crect x='18' y='19' width='12' height='9' rx='2' fill='%234f6bed'/%3E%3Cpath d='M8 13v7a3 3 0 0 0 3 3h7' stroke='%234f6bed' stroke-width='2.4' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<script src="/vendor/mermaid.min.js"></script>
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><svg viewBox="0 0 32 32" width="18" height="18"><rect x="2" y="4" width="12" height="9" rx="2"/><rect x="18" y="19" width="12" height="9" rx="2"/><path d="M8 13v7a3 3 0 0 0 3 3h7"/></svg>mmdr</div>
+  <select id="file" title="Markdown file"></select>
+  <div class="crumb" id="crumb"></div>
+  <div class="spacer"></div>
+  <div class="seg" id="views">
+    <button data-view="canvas" title="Canvas (⌥1)">Canvas</button>
+    <button data-view="split" title="Canvas + preview (⌥2)">Split</button>
+    <button data-view="preview" title="Mermaid preview (⌥3)">Preview</button>
+    <button data-view="doc" title="Whole markdown file (⌥4)">Markdown</button>
+  </div>
+  <span id="status" class="status"></span>
+  <label class="toggle" title="Save automatically after each change"><input type="checkbox" id="autosave"> Autosave</label>
+  <button id="save" class="btn" title="Save (⌘S)">Save</button>
+  <button id="theme" class="icon-btn" title="Theme"></button>
+  <button id="help" class="icon-btn" title="Shortcuts (?)">?</button>
+</header>
+
+<div class="main">
+  <aside class="side">
+    <div class="pane-h">Outline <span class="spacer"></span><button id="add-diagram" class="icon-btn" title="New diagram">+</button></div>
+    <form id="new-form" class="new-form" hidden>
+      <input name="title" placeholder="Title (becomes a ## heading)" autocomplete="off">
+      <div class="inline">
+        <select name="type">
+          <option value="flowchart">Flowchart</option>
+          <option value="architecture">Architecture (beta)</option>
+          <option value="sequence">Sequence</option>
+          <option value="class">Class</option>
+          <option value="state">State</option>
+          <option value="er">Entity relationship</option>
+          <option value="c4">C4 context</option>
+          <option value="gantt">Gantt</option>
+          <option value="mindmap">Mindmap</option>
+        </select>
+        <button class="btn primary">Add</button>
+      </div>
+    </form>
+    <nav id="outline" class="outline"></nav>
+  </aside>
+
+  <section class="center">
+    <div class="stage" id="stage">
+      <div class="canvas-wrap" id="canvas-wrap">
+        <div class="palette" id="palette"></div>
+        <div id="canvas" class="canvas"></div>
+        <div class="zoom">
+          <button data-z="out" title="Zoom out (-)">−</button>
+          <button data-z="fit" id="zoom-label" title="Fit (0)">100%</button>
+          <button data-z="in" title="Zoom in (+)">+</button>
+        </div>
+        <div class="cv-msg" id="cv-msg" hidden></div>
+      </div>
+      <div class="preview-wrap" id="preview-wrap">
+        <div class="pane-h">Preview <span class="muted">· what GitHub renders</span><span class="spacer"></span><button id="dl-svg" class="btn small" title="Download SVG">SVG</button></div>
+        <div class="preview" id="preview"></div>
+        <pre class="pv-err" id="pv-err" hidden></pre>
+      </div>
+      <textarea id="doc" class="doc" spellcheck="false" hidden></textarea>
+    </div>
+  </section>
+
+  <aside class="right">
+    <div class="inspector" id="inspector"></div>
+    <div class="pane-h">Mermaid <span class="muted" id="code-info"></span><span class="spacer"></span><button id="copy-src" class="btn small">Copy</button></div>
+    <div class="code" id="code"><pre aria-hidden="true"></pre><textarea spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off"></textarea></div>
+  </aside>
+</div>
+
+<div class="modal" id="help-modal" hidden>
+  <div class="modal-card">
+    <div class="pane-h">Shortcuts <span class="spacer"></span><button class="icon-btn" data-close>×</button></div>
+    <div class="keys">
+      <div><kbd>dbl-click</kbd> canvas</div><div>new node</div>
+      <div>drag <kbd>●</kbd> handle</div><div>connect (drop on empty space = new node)</div>
+      <div><kbd>⌥</kbd> drag node</div><div>connect from node</div>
+      <div><kbd>Tab</kbd></div><div>add connected node (also while typing a label)</div>
+      <div><kbd>Enter</kbd> / <kbd>F2</kbd></div><div>edit label · <kbd>⇧Enter</kbd> new line</div>
+      <div>drag into a box</div><div>move node into / out of a group</div>
+      <div><kbd>⌘G</kbd> / <kbd>⇧⌘G</kbd></div><div>group / ungroup selection</div>
+      <div><kbd>⌘D</kbd></div><div>duplicate</div>
+      <div><kbd>⌘C</kbd> <kbd>⌘V</kbd></div><div>copy as mermaid · paste mermaid or images</div>
+      <div><kbd>⇧</kbd> drag</div><div>box select</div>
+      <div><kbd>⌘</kbd> click</div><div>follow a node's link</div>
+      <div>scroll / <kbd>space</kbd> drag</div><div>pan · <kbd>⌘</kbd>/pinch to zoom · <kbd>0</kbd> fit</div>
+      <div>arrows</div><div>nudge (<kbd>⇧</kbd> ×5)</div>
+      <div><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></div><div>undo / redo</div>
+      <div><kbd>⌘S</kbd></div><div>save now</div>
+    </div>
+    <p class="muted">Positions are stored in a <code>%% mmdr:layout</code> comment inside the block. Mermaid ignores it, so GitHub still renders its own automatic layout.</p>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div id="layout-host" aria-hidden="true"></div>
+<input type="file" id="img-input" accept="image/*" hidden>
+</body>
+</html>

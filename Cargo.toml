@@ -1,0 +1,17 @@
+[package]
+name = "mmdr"
+version = "0.1.0"
+edition = "2021"
+description = "A tiny local visual editor for mermaid diagrams that live inside markdown files"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+# none on purpose: std-only HTTP server, file watcher and CLI
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
