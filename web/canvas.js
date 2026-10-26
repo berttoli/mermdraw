@@ -350,8 +350,11 @@ export class Canvas {
       '--cv-edge': 'lineColor', '--cv-group-fill': 'clusterBkg', '--cv-group-stroke': 'clusterBorder',
       '--cv-label-bg': 'edgeLabelBackground', '--cv-bg': 'background',
     };
-    for (const [prop, key] of Object.entries(vars)) {
-      const v = pal?.[key];
+    // A themed diagram sits on its own paper so its text colours stay readable in either UI theme.
+    const paper = pal && !pal.background && luminance(pal.primaryColor);
+    const derived = paper == null || paper === false ? {} : paper > 150 ? { background: '#FFFFFF', dot: '#DCDFE9' } : { background: '#121A2C', dot: '#27314B' };
+    for (const [prop, key] of Object.entries({ ...vars, '--cv-dot': 'dot' })) {
+      const v = pal?.[key] ?? derived[key];
       if (typeof v === 'string' && /^[#\w(),.%\s-]+$/.test(v)) this.root.style.setProperty(prop, v);
       else this.root.style.removeProperty(prop);
     }
@@ -1076,15 +1079,22 @@ export class Canvas {
 
 // ------------------------------------------------------------------ drawing helpers
 
+/** Perceived brightness (0-255) of a CSS colour, or null if it can't be resolved. */
+function luminance(color) {
+  if (!color) return null;
+  measureCtx.fillStyle = '#000';
+  measureCtx.fillStyle = String(color).replace(/!important/, '');
+  const hex = measureCtx.fillStyle;
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return null;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
 /** Explicit `color`, or dark/light text that stays readable on a custom fill. */
 function textColor(st) {
   if (st.get('color') || !st.get('fill')) return st.get('color');
-  measureCtx.fillStyle = '#000';
-  measureCtx.fillStyle = st.get('fill').replace(/!important/, '');
-  const hex = measureCtx.fillStyle;
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return undefined;
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#1f1f23' : '#f4f4f6';
+  const l = luminance(st.get('fill'));
+  return l == null ? undefined : l > 150 ? '#1f1f23' : '#f4f4f6';
 }
 
 function styleAttr(st) {

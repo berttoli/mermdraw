@@ -626,14 +626,21 @@ export function serializeFlowchart(m) {
   };
   for (const n of m.nodes) bucket(n.parent).nodes.push(n);
   for (const g of m.groups) bucket(g.parent).groups.push(g);
+  // Ids in the order they are written, which is also the order a re-parse sees them;
+  // class and layout lines follow it so a second save produces no diff.
+  const order = { nodes: [], groups: [] };
   const emit = (p, depth, seen) => {
     const b = kids.get(p);
     if (!b) return;
     const ind = IND.repeat(depth);
-    for (const n of b.nodes) out.push(ind + nodeDecl(n));
+    for (const n of b.nodes) {
+      out.push(ind + nodeDecl(n));
+      order.nodes.push(n);
+    }
     for (const g of b.groups) {
       if (seen.has(g.id)) continue;
       seen.add(g.id);
+      order.groups.push(g);
       out.push(ind + groupHeader(g));
       if (g.dir) out.push(ind + IND + 'direction ' + g.dir);
       emit(g.id, depth + 1, seen);
@@ -650,7 +657,7 @@ export function serializeFlowchart(m) {
   for (const c of m.classDefs) out.push(`${IND}classDef ${c.name} ${c.css}`);
   // one `class` line per class: classDef order first, ids in diagram order (stable diffs)
   const byClass = new Map(m.classDefs.map((c) => [c.name, []]));
-  const ordered = [...m.nodes.map((n) => n.id), ...m.groups.map((g) => g.id)];
+  const ordered = [...order.nodes.map((n) => n.id), ...order.groups.map((g) => g.id)];
   for (const id of Object.keys(m.classes)) if (!ordered.includes(id)) ordered.push(id);
   for (const id of ordered) {
     if (!visibleId(id)) continue;
@@ -668,19 +675,19 @@ export function serializeFlowchart(m) {
     out.push(`${IND}click ${id} href "${l.url.replace(/"/g, '%22')}"${l.tooltip ? ` "${l.tooltip.replace(/"/g, "'")}"` : ''}${l.target ? ' ' + l.target : ''}`);
   }
   for (const x of m.extras) out.push(...x.split('\n').map((l) => IND + l));
-  const layout = layoutLine(m);
+  const layout = layoutLine(m, order);
   if (layout) out.push(IND + layout);
   return out.join('\n');
 }
 
-function layoutLine(m) {
+function layoutLine(m, order) {
   const parts = [];
   const r = (v) => Math.round(v);
-  for (const n of m.nodes) {
+  for (const n of order.nodes) {
     const p = m.layout[n.id];
     if (p) parts.push(`${n.id}:${r(p.x)},${r(p.y)}`);
   }
-  for (const g of m.groups) {
+  for (const g of order.groups) {
     const p = m.layout[g.id];
     const empty = !m.nodes.some((n) => n.parent === g.id) && !m.groups.some((c) => c.parent === g.id);
     if (p && empty && !g.implicit) parts.push(`${g.id}:${r(p.x)},${r(p.y)}`);

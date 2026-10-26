@@ -1,44 +1,204 @@
-# mmdr
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/header-dark.png">
+    <img alt="mmdr — drag-and-drop mermaid diagrams that live in your markdown and your git history" src="docs/images/header-light.png" width="100%">
+  </picture>
+</p>
 
-[![CI](https://github.com/berttoli/mmdr/actions/workflows/ci.yml/badge.svg)](https://github.com/berttoli/mmdr/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/berttoli/mmdr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/berttoli/mmdr/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Dependencies: 0" src="https://img.shields.io/badge/dependencies-0-brightgreen.svg">
+  <img alt="mermaid 11.17" src="https://img.shields.io/badge/mermaid-11.17-ff3670.svg">
+</p>
 
-A tiny, local, drag-and-drop editor for the mermaid diagrams that live inside your markdown.
+**mmdr** is a tiny local editor for the mermaid diagrams inside your markdown. Point it at a file, drag boxes
+around, connect them, drop in logos, and every change is written straight back into the ```` ```mermaid ```` block, ready
+to commit and review like any other change. It's a draw.io / Miro-style canvas that keeps your architecture as
+plain text in your repo.
 
 ```bash
-mmdr docs/architecture.md
+mmdr docs/architecture.md        # opens the editor in your browser
 ```
 
-opens a browser tab where every ```` ```mermaid ```` block in the file is listed in an outline. Flowcharts get a
-visual canvas (drag, connect, group, drop images, add text, link to other diagrams); every diagram type gets a live
-code editor and a real mermaid preview. Each change is written straight back into the markdown block, so your
-architecture lives in the repo and changes show up as normal, reviewable diffs.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
+  <img alt="The mmdr canvas editing an L2 architecture diagram with product icons, the node inspector and the generated mermaid" src="docs/images/hero-light.png">
+</picture>
 
-- **One ~1.7 MB binary, zero dependencies.** std-only Rust: HTTP server, file watcher and CLI. The UI and a gzipped
-  mermaid 11.17.2 are embedded, so it works offline and starts instantly.
-- **Markdown stays the source of truth.** Only the selected block is rewritten; prose, other blocks, line endings and
-  indentation are untouched. Edit the file in vim/VS Code at the same time — mmdr reloads on change, and if both sides
-  edited, it re-applies your diagram on top of the newer file instead of clobbering it.
-- **Clean mermaid out.** Readable ids derived from labels (`Auth Service` → `authService`), one statement per line,
-  stable ordering — so diffs are small and the output works anywhere mermaid does (GitHub, GitLab, Obsidian, docs sites).
+> **Status: 0.1, early.** Expect rough edges. [Issues](https://github.com/berttoli/mmdr/issues) and ideas are welcome.
 
-> **Status: 0.1, early.** Expect rough edges.
-> [Issues](https://github.com/berttoli/mmdr/issues) and ideas are welcome.
+## Features
+
+**Visual canvas for flowcharts**
+- Drag, drop and connect: pull a node's ● handle onto another node, or onto empty space to create the next node.
+  Press <kbd>Tab</kbd> while naming a node to chain the next one.
+- All 38 mermaid 11 shapes, plus free text, images (drop or paste one and it's saved to `assets/`) and product icons.
+- Subgraphs: <kbd>⌘G</kbd> to group, drag nodes into or out of a box, nest groups, set a direction per group.
+- Inspector: rename ids (every reference follows), labels, shapes, links, colours (`style` / `linkStyle`), classes,
+  and edge style (solid, thick, dotted, invisible, arrowheads, length).
+- Box-select, align and distribute, duplicate, copy as mermaid / paste mermaid, undo/redo, zoom, pan and fit.
+  **Auto-layout** snaps the canvas to mermaid's own layout.
+
+**Code and live preview for every diagram type**
+- Four views: **Canvas**, **Split**, **Preview**, and **Markdown** for editing the whole file.
+- A syntax-highlighted code pane. Typing updates the canvas and preview immediately.
+- The real mermaid 11.17.2 renderer is embedded (works offline). The preview shows what GitHub draws; export it as SVG.
+- An outline of the file's headings and diagrams. Add diagrams from nine templates (flowchart, sequence, class,
+  state, ER, architecture, C4, gantt, mindmap) or delete them.
+
+**Markdown-native and git-friendly**
+- Only the block you edit changes. Prose, other blocks, line endings and indentation are left alone. `.md` and
+  `.mmd` both work.
+- Autosave (or <kbd>⌘S</kbd>) with atomic writes. Edits made in vim or VS Code reload live, and if both sides changed
+  the file, mmdr re-applies your diagram on top of theirs instead of overwriting them.
+- Stable, canonical output with readable ids (`Auth Service` → `authService`). Canvas positions live in a single
+  `%% mmdr:layout` comment that mermaid ignores.
+
+**Architecture tooling: L1 → L2**
+- **Icon packs:** `mmdr icons add logos devicon` installs ~3,300 open-licensed logos (Python, Rust, nginx, Postgres,
+  Kubernetes, Cloud Run, Okta, Grafana, Proxmox…), globally or vendored into the repo. Find them with a searchable picker.
+- **Drill-down:** link a node to another diagram (`./l2-platform.md#2`). <kbd>⌘</kbd>-click drills in, and a
+  **← back** chip (<kbd>⌘[</kbd>) returns.
+- **Diagram styles** (Labs): palettes, a hand-drawn look and orthogonal lines, written as mermaid frontmatter config,
+  so GitHub renders them too.
+
+**Small and safe**
+- One ~1.7 MB std-only Rust binary: no runtime, no dependencies, starts instantly. `--app` opens a chromeless window.
+- Listens on `127.0.0.1` only, rejects foreign `Host` headers, never leaves the folder it serves, and only accepts
+  image uploads.
+
+| | |
+| --- | --- |
+| <img alt="L1 landscape in the mermaid preview with the outline" src="docs/images/l1-preview.png"> **L1** in the preview: exactly what GitHub renders | <img alt="Drilled down from L1 into the workplace IT L2, with the back chip" src="docs/images/drilldown.png"> **⌘-click drill-down** from L1 into an L2 |
+| <img alt="Icon picker searching for cloud icons" src="docs/images/icon-picker.png"> **Icon picker** over installed Iconify packs | <img alt="Hand-drawn mint theme with orthogonal lines on canvas and preview" src="docs/images/styles.png"> **Diagram styles**: theme, hand-drawn, orthogonal |
+| <img alt="Sequence diagram with live preview and code" src="docs/images/code-preview.png"> **Any diagram type** as code with a live preview | <img alt="Labs panel listing feature flags" src="docs/images/labs.png"> **Labs**: experiments behind feature flags |
 
 ## Install
 
-Pre-built binaries for Linux, macOS and Windows are on the
-[releases page](https://github.com/berttoli/mmdr/releases): download, unpack, put `mmdr` on your `PATH`.
-
-With a Rust toolchain:
+Download a binary for Linux, macOS or Windows from the [releases page](https://github.com/berttoli/mmdr/releases),
+unpack it and put `mmdr` on your `PATH`. Or build it with Rust:
 
 ```bash
 cargo install --git https://github.com/berttoli/mmdr
 ```
 
-or clone and run `cargo install --path .`. Optional icon packs for L2 diagrams: `mmdr icons add logos devicon`.
+Optional, for L2 diagrams with product logos:
 
-## Use
+```bash
+mmdr icons add logos devicon            # into ~/.config/mmdr/icons, available everywhere
+mmdr icons add logos --vendor           # or into this repo's .mmdr/icons so teammates get them too
+```
+
+## Quick start
+
+```bash
+mmdr new docs/architecture.md --title "System overview"   # creates the file with a starter flowchart
+mmdr docs/architecture.md                                  # edit it in the browser; changes save as you go
+git diff docs/architecture.md                              # review it like any other change
+```
+
+Then try the [IT organization example](examples/it-org/README.md): `mmdr examples/it-org/README.md` and ⌘-click a
+thick-bordered box to drill from the L1 landscape into an L2.
+
+## Examples
+
+**What a canvas edit writes.** Starting from a hand-written block, drag the nodes around and press <kbd>Tab</kbd> on
+`Orders service` to add a cache. mmdr rewrites the block like this:
+
+````markdown
+```mermaid
+graph LR
+    client([Client])
+    api[API Gateway]
+    svc[Orders service]
+    db[(Postgres)]
+    redisCache[(Redis cache)]
+    client --> api
+    api --> svc
+    svc --> db
+    svc -->|sessions| redisCache
+    %% mmdr:layout client:0,0 api:200,0 svc:400,0 db:600,-60 redisCache:600,60
+```
+````
+
+**An L1 that renders anywhere**, linking down to its L2s. Only classic shapes, a theme and classDefs are used, so this
+is GitHub rendering it right here:
+
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#EEF2FF"
+    primaryBorderColor: "#4F6BED"
+    primaryTextColor: "#1E2457"
+    lineColor: "#8A93BF"
+---
+flowchart LR
+    customers([Customers]) -->|web · app| commerce[[Commerce platform]]
+    commerce -->|orders| fulfilment[[Fulfilment]]
+    commerce -.->|events| data[(Data & AI platform)]
+    commerce ==>|runs on| runtime[Cloud platform · GCP]
+    classDef drill stroke-width:3px
+    class commerce,data,runtime drill
+    click commerce href "./examples/it-org/l2-digital-products.md" "L2 · Digital products"
+    click runtime href "./examples/it-org/l2-cloud-platform.md" "L2 · Cloud platform"
+```
+
+**L2 nodes with product icons**: mermaid's own icon syntax, drawn with the packs you installed:
+
+````markdown
+```mermaid
+flowchart LR
+    ingress@{ icon: "logos:nginx", label: "nginx ingress", pos: "b", h: 44 }
+    cart@{ icon: "logos:python", label: "Cart API · Python", pos: "b", h: 44 }
+    pricing@{ icon: "logos:rust", label: "Pricing engine · Rust", pos: "b", h: 44 }
+    orders@{ icon: "logos:postgresql", label: "Orders DB · Cloud SQL", pos: "b", h: 44 }
+    ingress --> cart
+    cart --> pricing
+    cart --> orders
+```
+````
+
+**Diagram styles** chosen in the inspector (Labs → Diagram styles) become plain mermaid config:
+
+````markdown
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#E9F7EF"
+    primaryBorderColor: "#2F9E6B"
+    lineColor: "#4F8A6E"
+  look: handDrawn
+  flowchart:
+    curve: step
+---
+flowchart TD
+    api[Payments API] --> router{Provider?}
+```
+````
+
+**Team defaults** for experiments go in `.mmdr/config.json`:
+
+```json
+{ "flags": { "themes": true, "smart-guides": true } }
+```
+
+**Scripting** from the terminal or CI:
+
+```bash
+mmdr ls docs/architecture.md                       # inventory: index, type, line range, title
+mmdr cat docs/architecture.md 2 > checkout.mmd     # extract one diagram's source
+mmdr new docs/adr/0042.md -t sequence --title "Token refresh"
+```
+
+## Reference
+
+<details>
+<summary><b>Command line</b></summary>
 
 ```
 mmdr [PATH]                  open a .md/.mmd file or a directory (default: .)
@@ -59,102 +219,87 @@ mmdr icons rm PACK... [--vendor]
       --disable F1,F2        turn feature flags off
 ```
 
-Opening a file serves its git repository (or its folder outside git), so the file picker lists every markdown file in the repo and links between
-files work. Opening a directory serves that directory.
+Opening a file serves its git repository (or its folder outside git), so the file picker lists every markdown file
+in the repo and links between files work. Opening a directory serves that directory.
 
-### On the canvas (flowcharts)
+</details>
+
+<details>
+<summary><b>Canvas shortcuts</b></summary>
 
 | Do this | To |
 | --- | --- |
 | double-click empty space, or drag a shape from the palette | add a node |
-| drag a node's ● handle onto another node / group | connect them (drop on empty space to create the next node) |
-| <kbd>Tab</kbd> on a node (also while typing its label) | add a connected node downstream — fast keyboard entry |
-| drag a node onto a group box / out of it | move it into / out of that subgraph |
+| drag a node's ● handle onto another node or group | connect them (drop on empty space to create the next node) |
+| <kbd>⌥</kbd>-drag a node | connect from it |
+| <kbd>Tab</kbd> on a node (also while typing its label) | add a connected node downstream |
+| <kbd>Enter</kbd> / <kbd>F2</kbd>, <kbd>⇧Enter</kbd> | edit the label, new line |
+| drag a node onto a group box, or out of it | move it into or out of that subgraph |
 | <kbd>⌘G</kbd> / <kbd>⇧⌘G</kbd> | group the selection into a subgraph / ungroup |
-| palette **T** | free text on the canvas (mermaid `text` shape) |
-| drop or paste an image | uploads it to `assets/` next to the markdown file and adds an `img` node |
-| set **Link** in the inspector, <kbd>⌘</kbd>-click the node | `click … href`; `./other.md#2` opens diagram 2 of that file in mmdr |
+| <kbd>⇧</kbd>-drag on empty space | box select |
 | <kbd>⌘C</kbd> / <kbd>⌘V</kbd> | copy the selection as mermaid; paste mermaid snippets or images |
-| <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd>, <kbd>⌘D</kbd>, arrows, <kbd>0</kbd> | undo/redo, duplicate, nudge, fit |
+| <kbd>⌘</kbd>-click a node, <kbd>⌘[</kbd> | follow its link (drill down), go back |
+| <kbd>⌘D</kbd>, arrows (<kbd>⇧</kbd> ×5) | duplicate, nudge |
+| scroll / <kbd>space</kbd>-drag, <kbd>⌘</kbd>-scroll or pinch, <kbd>0</kbd> | pan, zoom, fit |
+| <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>, <kbd>⌘S</kbd> | undo / redo, save now |
+| <kbd>⌥1</kbd>–<kbd>⌥4</kbd>, <kbd>?</kbd> | Canvas / Split / Preview / Markdown view, shortcut help |
 
-The inspector edits ids, labels, all 38 mermaid 11 shapes, image/icon options, edge style (solid/thick/dotted/hidden,
-arrowheads, length, label), group direction, colours (`style` / `linkStyle`) and classes. Statements mmdr doesn't model
-(`classDef`, comments, `accTitle`, callbacks …) are kept verbatim.
+Statements mmdr doesn't model on the canvas (comments, `accTitle`, click callbacks…) are kept verbatim.
 
-Sequence, class, state, ER, C4, architecture-beta and the rest are edited as code with a live preview.
+</details>
 
-### Icons (L2 diagrams)
+<details>
+<summary><b>Labs: features behind flags</b></summary>
 
-```bash
-mmdr icons add logos devicon            # into ~/.config/mmdr/icons, available everywhere
-mmdr icons add logos --vendor           # into this repo's .mmdr/icons so teammates get them too
-```
-
-Then use the palette's ★ item (or a node's **Browse…** button) to search ~3,300 logos — Python, Rust, nginx, Postgres,
-Kubernetes, Cloud Run, Okta, Grafana, Proxmox… Icon nodes are mermaid's own syntax,
-`api@{ icon: "logos:python", label: "Cart API", pos: "b", h: 44 }`, and mmdr registers the installed packs with the
-preview. Any [Iconify set](https://icon-sets.iconify.design/) name works with `icons add`.
-
-### Labs: features behind flags
-
-Experiments ship behind feature flags so they can be tried and iterated on. Open **⚗ Labs** in the editor to toggle them
-for yourself; set team defaults in `.mmdr/config.json` (`{"flags": {"themes": true}}`) or per run with
-`mmdr --enable themes,smart-guides`.
+Experiments ship behind feature flags so they can be tried and iterated on. Toggle them for yourself under **⚗ Labs**,
+set team defaults in `.mmdr/config.json`, or per run with `mmdr --enable themes,smart-guides`.
 
 | Flag | Stage | What it does |
 | --- | --- | --- |
-| `icons` | beta | Icon packs on the canvas and the icon picker |
-| `themes` | experimental | Diagram styles: palettes, hand-drawn look, straight/orthogonal lines — written as mermaid frontmatter `config`, so GitHub renders them |
+| `icons` | beta (on) | Icon packs on the canvas and the icon picker |
+| `themes` | experimental | Diagram styles: palettes, hand-drawn look, straight/orthogonal lines, written as mermaid frontmatter `config` |
 | `smart-guides` | experimental | Alignment lines and snapping to other nodes while dragging |
 | `sticky-notes` | experimental | Yellow notes (a `sticky` classDef) from the palette |
 
-The research behind these, and the roadmap of next flags (shape data, conditional formatting, smart containers, layers,
-semantic L1→L2 zoom, cloud import, presentation mode), is in
+The research behind these, with the roadmap of next flags (shape data, conditional formatting, smart containers,
+layers, semantic L1→L2 zoom, cloud import, presentation mode), is in
 [docs/research/lucidchart-miro.md](docs/research/lucidchart-miro.md).
 
-## Examples
-
-- [examples/it-org](examples/it-org/README.md) — a whole IT organization: an **L1** org chart and landscape built from
-  default shapes (renders anywhere), with thick-bordered boxes that drill down (⌘-click) into four **L2** diagrams using
-  product icons: digital products (Python, Rust, Go, nginx), the GCP cloud platform, data & AI, and workplace IT.
-- [examples/architecture.md](examples/architecture.md) — a smaller single-file system overview.
+</details>
 
 ## Things to know
 
-- **Positions are mmdr-only.** Mermaid has no syntax for manual coordinates, so mmdr stores them in a comment at the end
-  of the block — `%% mmdr:layout api:120,40 db:300,40` — which mermaid ignores. GitHub (and anything else) still renders
-  mermaid's automatic layout; the Preview pane shows exactly that. **Auto-layout** in the inspector snaps the canvas to
-  mermaid's layout. Diagrams you never moved on the canvas get no layout comment.
-- **Editing on the canvas rewrites the block in canonical form** (node declarations, then subgraphs, then edges, then
-  styles). Edits in the code pane are kept exactly as typed.
-- **Relative image paths** (`assets/x.png`) render in mmdr; GitHub renders mermaid in a sandboxed frame and probably
-  won't resolve them, so use absolute URLs for images that must show up there.
-- **Icon packs aren't available on GitHub.** Icon nodes still render there, but with mermaid's placeholder icon. Keep
-  diagrams that must look right everywhere (L1) to classic shapes, as the IT-org example does.
-- The server binds to `127.0.0.1` only, rejects requests for other hosts (DNS rebinding), never leaves the opened root,
-  and writes files atomically.
+- **Positions are mmdr-only.** Mermaid has no syntax for manual coordinates, so mmdr keeps them in a
+  `%% mmdr:layout` comment. GitHub and every other renderer still draw mermaid's automatic layout, which the Preview
+  pane shows exactly. Diagrams you never move on the canvas get no layout comment.
+- **Canvas edits rewrite the block in canonical form** (declarations, subgraphs, edges, then styles). Edits in the code
+  pane are kept exactly as typed.
+- **Icon packs and relative image paths don't exist on GitHub.** Icon nodes render there with mermaid's placeholder
+  icon, and relative images probably won't resolve. Keep diagrams that must look right everywhere (your L1) to classic
+  shapes, as the IT-org example does.
 
 ## Develop
 
-No dependencies to install beyond Rust (pinned in `rust-toolchain.toml`) and Node ≥ 22 for the JS tests.
+Rust (pinned in `rust-toolchain.toml`) and Node ≥ 22 for the JS tests; no other dependencies.
 
 ```bash
-cargo test                      # Rust unit tests (fence scanner, icon packs)
-npm test                        # parser / serializer / example round-trip tests (node --test, no npm deps)
-cargo build --release && tests/smoke.sh    # end-to-end: CLI commands + HTTP API of the real binary
-MMDR_WEB=web cargo run -- examples/architecture.md   # serve web/ from disk: edit JS/CSS, reload
-./scripts/update-mermaid.sh 11.17.2                  # re-vendor mermaid
+cargo test                                  # Rust unit tests (fence scanner, icon packs)
+npm test                                    # parser / serializer / example round-trip tests (no npm deps)
+cargo build --release && tests/smoke.sh     # end-to-end: CLI commands + HTTP API of the real binary
+MMDR_WEB=web cargo run -- examples          # serve web/ from disk: edit JS/CSS, reload the page
+node scripts/screenshots.mjs                # regenerate the README images with headless Chrome
+./scripts/update-mermaid.sh 11.17.2         # re-vendor mermaid
 ```
 
-CI runs all of the above (plus `cargo fmt --check` and `clippy -D warnings`) on Linux, macOS and Windows. Pushing a
+CI runs all of the tests (plus `cargo fmt --check` and `clippy -D warnings`) on Linux, macOS and Windows. Pushing a
 `v*` tag builds release binaries for five targets and publishes them with the matching `CHANGELOG.md` section.
 
 `web/model.js` is the heart: markdown block scanning plus a lossless mermaid-flowchart model (parse → edit →
-serialize, including frontmatter styles). `web/canvas.js` is the SVG editor, `web/app.js` the glue (outline, code pane,
-preview, inspector, autosave, sync, Labs), `web/flags.js` the feature-flag registry, `web/icons.js` the icon-pack store,
-`src/main.rs` the server/CLI and `src/icons.rs` icon-pack management.
+serialize, including frontmatter styles). `web/canvas.js` is the SVG editor, `web/app.js` the glue (outline, code
+pane, preview, inspector, autosave, sync, Labs), `web/flags.js` the feature-flag registry and `web/icons.js` the
+icon-pack store. `src/main.rs` is the server and CLI, `src/icons.rs` the icon-pack manager.
 
 ## License
 
-[MIT](LICENSE) © berttoli. The embedded mermaid bundle is MIT-licensed by the mermaid-js contributors; icon packs are
+[MIT](LICENSE) © berttoli. The embedded mermaid bundle is MIT-licensed by the mermaid-js contributors. Icon packs are
 downloaded separately under their own licenses (`logos`: CC0-1.0, `devicon`: MIT).

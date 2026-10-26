@@ -55,6 +55,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Parser, serializer and example tests
-        run: node --test tests/
+        run: node --test tests/*.test.mjs
       - name: Syntax-check browser modules
         run: for f in web/*.js; do node --check "$f"; done

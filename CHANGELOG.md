@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- README: generated header, screenshots, feature tour and code examples; `scripts/screenshots.mjs` regenerates
+  the images with headless Chrome.
+- Themed diagrams render on a matching paper on the canvas, so their text stays readable in either UI theme.
+- Canvas saves are stable from the first save when top-level nodes are declared after subgraphs.
+- The IT-org digital-products L2 ships with a hand-arranged canvas layout.
+- CI: the JS tests run on Node 22 and 24 (`node --test tests/*.test.mjs`).
+
 ## 0.1.0 — 2026-10-26
 
 First public release.

@@ -135,10 +135,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   /* a diagram's mermaid theme overrides these inline (see Canvas.applyStyle) */
   --cv-node-fill: var(--node-fill); --cv-node-stroke: var(--node-stroke); --cv-text: var(--fg); --cv-edge: var(--edge);
   --cv-group-fill: var(--group-fill); --cv-group-stroke: var(--group-stroke); --cv-label-bg: var(--label-bg); --cv-bg: transparent;
+  --cv-dot: var(--grid);
 }
 .cv { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: none; background: var(--cv-bg); }
 .cv.sketch .sh, .cv.sketch .sh-line, .cv.sketch .eline, .cv.sketch .gbox { filter: url(#sketch); }
-.cv .dot { fill: var(--grid); }
+.cv .dot { fill: var(--cv-dot); }
 .cv-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; text-align: center; padding: 0 20px; }
 .cv-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; color: var(--muted); background: var(--bg); z-index: 3; }
 .cv-msg b { color: var(--fg); }

@@ -338,3 +338,11 @@ test('bundled examples parse cleanly and round-trip', async () => {
   }
   assert.ok(flowcharts >= 8);
 });
+
+test('nodes declared after subgraphs still serialize stably on the first save', () => {
+  const src = 'flowchart LR\n  a\n  subgraph g [G]\n    b:::x\n  end\n  c:::x\n  classDef x fill:#fff\n  %% mmdr:layout a:0,0 b:10,0 c:20,0';
+  const once = M.serializeFlowchart(M.parseFlowchart(src));
+  assert.equal(M.serializeFlowchart(M.parseFlowchart(once)), once);
+  assert.match(once, /class c,b x/);
+  assert.match(once, /%% mmdr:layout a:0,0 c:20,0 b:10,0$/);
+});
