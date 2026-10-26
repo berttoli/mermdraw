@@ -4,6 +4,7 @@
 //! serves it on 127.0.0.1, watches the files the UI has open, and writes edits
 //! back to disk atomically so they can be committed like any other change.
 
+mod icons;
 mod md;
 
 use std::collections::HashMap;
@@ -36,6 +37,8 @@ const ASSETS: &[Asset] = &[
     Asset { path: "/app.css", file: "app.css", mime: "text/css; charset=utf-8", body: include_bytes!("../web/app.css"), gzipped: false },
     Asset { path: "/app.js", file: "app.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/app.js"), gzipped: false },
     Asset { path: "/canvas.js", file: "canvas.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/canvas.js"), gzipped: false },
+    Asset { path: "/flags.js", file: "flags.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/flags.js"), gzipped: false },
+    Asset { path: "/icons.js", file: "icons.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/icons.js"), gzipped: false },
     Asset { path: "/model.js", file: "model.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/model.js"), gzipped: false },
     Asset { path: "/vendor/mermaid.min.js", file: "vendor/mermaid.min.js.gz", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/vendor/mermaid.min.js.gz"), gzipped: true },
 ];
@@ -46,10 +49,13 @@ struct Opts {
     app: bool,
     kind: String,
     title: Option<String>,
+    vendor: bool,
+    /// feature flags forced on (true) or off (false) from the command line
+    flags: Vec<(String, bool)>,
 }
 
 fn main() {
-    let mut opts = Opts { port: None, open: true, app: false, kind: "flowchart".into(), title: None };
+    let mut opts = Opts { port: None, open: true, app: false, kind: "flowchart".into(), title: None, vendor: false, flags: Vec::new() };
     let mut pos: Vec<String> = Vec::new();
     let args: Vec<String> = env::args().skip(1).collect();
     let mut i = 0;
@@ -67,6 +73,13 @@ fn main() {
             "--title" => opts.title = Some(value()),
             "--no-open" => opts.open = false,
             "--app" => opts.app = true,
+            "--vendor" => opts.vendor = true,
+            "--enable" | "--disable" => {
+                let on = a == "--enable";
+                for f in value().split(',').map(str::trim).filter(|f| !f.is_empty()) {
+                    opts.flags.push((f.to_string(), on));
+                }
+            }
             _ if a.starts_with('-') && a.len() > 1 => die(&format!("unknown option {a} (try --help)")),
             _ => pos.push(a.to_string()),
         }
@@ -76,6 +89,7 @@ fn main() {
         Some("ls") => cmd_ls(&pos[1..]),
         Some("cat") => cmd_cat(&pos[1..]),
         Some("new") => cmd_new(&pos[1..], &opts),
+        Some("icons") => cmd_icons(&pos[1..], &opts),
         Some("edit") | Some("open") => serve(pos.get(1).map(String::as_str), &opts),
         Some("help") => print_help(),
         other => serve(other, &opts),
@@ -93,11 +107,18 @@ USAGE
   mmdr new FILE [-t TYPE] [--title TITLE]
                               append a new diagram (flowchart, sequence, class, state,
                               er, architecture, c4, gantt, mindmap)
+  mmdr icons [ls]             list installed icon packs
+  mmdr icons add PACK[@VER]... [--vendor]
+                              install Iconify packs (logos, devicon, simple-icons, mdi, ...)
+                              into ~/.config/mmdr/icons, or into this repo's .mmdr/icons
+  mmdr icons rm PACK... [--vendor]
 
 OPTIONS
   -p, --port N                port to listen on (default {DEFAULT_PORT}, next free one if taken)
       --no-open               don't open a browser
       --app                   open in a chromeless Chrome/Edge/Brave app window if available
+      --enable F1,F2          turn feature flags on (see Labs in the editor)
+      --disable F1,F2         turn feature flags off
   -h, --help                  show this help
   -V, --version               show version
 
@@ -157,6 +178,45 @@ fn cmd_new(args: &[String], opts: &Opts) {
     println!("added {} diagram #{} to {path}", opts.kind, count + 1);
 }
 
+fn cmd_icons(args: &[String], opts: &Opts) {
+    let root = env::current_dir().ok().map(|d| git_root(&d).unwrap_or(d));
+    let dest = if opts.vendor { root.as_deref().map(icons::project_dir) } else { icons::global_dir() }
+        .unwrap_or_else(|| die("cannot find a config directory (set XDG_CONFIG_HOME)"));
+    match args.first().map(String::as_str) {
+        None | Some("ls") | Some("list") => {
+            let packs = icons::installed(root.as_deref());
+            if packs.is_empty() {
+                println!("no icon packs installed — try: mmdr icons add logos devicon");
+            }
+            for p in packs {
+                println!("  {:<16} {:>8}  {:<8} {}", p.name, icons::human(p.size), p.source, p.path.display());
+            }
+        }
+        Some("add") => {
+            if args.len() < 2 {
+                die("usage: mmdr icons add PACK[@VERSION]... [--vendor]");
+            }
+            for spec in &args[1..] {
+                match icons::add(spec, &dest) {
+                    Ok((path, size)) => println!("installed {spec} ({}) → {}", icons::human(size), path.display()),
+                    Err(e) => die(&e),
+                }
+            }
+        }
+        Some("rm") | Some("remove") => {
+            for name in &args[1..] {
+                let path = dest.join(format!("{name}.json"));
+                if icons::valid_name(name) && fs::remove_file(&path).is_ok() {
+                    println!("removed {}", path.display());
+                } else {
+                    eprintln!("mmdr: {name} is not installed in {}", dest.display());
+                }
+            }
+        }
+        Some(other) => die(&format!("unknown icons command '{other}' (try: ls, add, rm)")),
+    }
+}
+
 // ---------------------------------------------------------------- server
 
 struct Hub {
@@ -167,6 +227,8 @@ struct Hub {
 struct State {
     root: PathBuf,
     initial: Option<String>,
+    /// JSON object of feature flags set on the command line
+    flags: String,
     web_dir: Option<PathBuf>,
     watched: Mutex<HashMap<String, String>>,
     hub: Mutex<Hub>,
@@ -214,9 +276,11 @@ fn serve(target: Option<&str>, opts: &Opts) {
 
     let listener = bind(opts.port);
     let port = listener.local_addr().unwrap().port();
+    let flags = opts.flags.iter().map(|(f, on)| format!("{}:{on}", json_str(f))).collect::<Vec<_>>().join(",");
     let state = Arc::new(State {
         root,
         initial: initial.clone(),
+        flags: format!("{{{flags}}}"),
         web_dir: env::var_os("MMDR_WEB").map(PathBuf::from),
         watched: Mutex::new(HashMap::new()),
         hub: Mutex::new(Hub { seq: 0, events: Vec::new() }),
@@ -374,11 +438,12 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
             let initial = st.initial.as_deref().map(json_str).unwrap_or_else(|| "null".into());
             let name = st.root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let body = format!(
-                r#"{{"version":{},"root":{},"rootName":{},"initial":{}}}"#,
+                r#"{{"version":{},"root":{},"rootName":{},"initial":{},"flags":{}}}"#,
                 json_str(VERSION),
                 json_str(&st.root.to_string_lossy()),
                 json_str(&name),
-                initial
+                initial,
+                st.flags
             );
             respond(s, "200 OK", "application/json", &[], body.as_bytes())
         }
@@ -422,6 +487,24 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
             let origin = req.headers.get("x-client").cloned().unwrap_or_default();
             st.publish(format!(r#"{{"type":"change","path":{},"version":{},"origin":{}}}"#, json_str(&rel), json_str(&v), json_str(&origin)));
             respond(s, "200 OK", "text/plain", &[("X-Version", v)], b"ok")
+        }
+        ("GET", "/api/config") => {
+            // project defaults for the editor (feature flags today); the browser validates it
+            let raw = fs::read_to_string(st.root.join(".mmdr").join("config.json")).ok().filter(|t| t.trim_start().starts_with('{'));
+            respond(s, "200 OK", "application/json", &[], raw.as_deref().unwrap_or("{}").as_bytes())
+        }
+        ("GET", "/api/icons") => {
+            let items: Vec<String> = icons::installed(Some(&st.root))
+                .iter()
+                .map(|p| format!(r#"{{"name":{},"source":{},"size":{}}}"#, json_str(&p.name), json_str(p.source), p.size))
+                .collect();
+            respond(s, "200 OK", "application/json", &[], format!(r#"{{"packs":[{}]}}"#, items.join(",")).as_bytes())
+        }
+        ("GET", p) if p.starts_with("/api/icons/") && p.ends_with(".json") => {
+            match icons::find(&st.root, &p[11..p.len() - 5]).and_then(|f| fs::read(f).ok()) {
+                Some(bytes) => respond(s, "200 OK", "application/json", &[("Cache-Control", "private, max-age=300".into())], &bytes),
+                None => text(s, "404 Not Found", "icon pack not installed"),
+            }
         }
         ("POST", "/api/upload") => upload(s, st, req),
         ("GET", "/api/events") => events(s, st),
@@ -563,9 +646,12 @@ fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
 
 fn respond(s: &mut TcpStream, status: &str, ctype: &str, extra: &[(&str, String)], body: &[u8]) -> io::Result<()> {
     let mut head = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n",
+        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n",
         body.len()
     );
+    if !extra.iter().any(|(k, _)| k.eq_ignore_ascii_case("cache-control")) {
+        head.push_str("Cache-Control: no-store\r\n");
+    }
     for (k, v) in extra {
         head.push_str(&format!("{k}: {v}\r\n"));
     }

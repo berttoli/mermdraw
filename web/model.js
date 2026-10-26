@@ -648,14 +648,18 @@ export function serializeFlowchart(m) {
     return g?.implicit ? null : id;
   };
   for (const c of m.classDefs) out.push(`${IND}classDef ${c.name} ${c.css}`);
-  const byClass = new Map();
-  for (const [id, list] of Object.entries(m.classes)) {
+  // one `class` line per class: classDef order first, ids in diagram order (stable diffs)
+  const byClass = new Map(m.classDefs.map((c) => [c.name, []]));
+  const ordered = [...m.nodes.map((n) => n.id), ...m.groups.map((g) => g.id)];
+  for (const id of Object.keys(m.classes)) if (!ordered.includes(id)) ordered.push(id);
+  for (const id of ordered) {
     if (!visibleId(id)) continue;
-    for (const c of list) {
+    for (const c of m.classes[id] || []) {
       if (!byClass.has(c)) byClass.set(c, []);
-      byClass.get(c).push(id);
+      if (!byClass.get(c).includes(id)) byClass.get(c).push(id);
     }
   }
+  for (const [c, ids] of byClass) if (!ids.length) byClass.delete(c);
   for (const [c, ids] of byClass) out.push(`${IND}class ${ids.join(',')} ${c}`);
   for (const [id, css] of Object.entries(m.styles)) if (css && visibleId(id)) out.push(`${IND}style ${id} ${css}`);
   m.edges.forEach((e, i) => e.style && out.push(`${IND}linkStyle ${i} ${e.style}`));
@@ -931,8 +935,9 @@ export const cssString = (map) => [...map].filter(([, v]) => v !== '' && v != nu
 export function effectiveStyle(m, id) {
   const out = new Map();
   const apply = (css) => parseCss(css).forEach((v, k) => out.set(k, v));
-  for (const c of m.classDefs) if (c.name === 'default') apply(c.css);
-  for (const name of m.classes[id] || []) for (const c of m.classDefs) if (c.name === name) apply(c.css);
+  // like mermaid's generated CSS: later classDefs win, regardless of the order classes were assigned
+  const mine = new Set(m.classes[id] || []);
+  for (const c of m.classDefs) if (c.name === 'default' || mine.has(c.name)) apply(c.css);
   if (m.styles[id]) apply(m.styles[id]);
   return out;
 }
@@ -1027,4 +1032,150 @@ export function layeredLayout(m, size) {
     });
   });
   return layout;
+}
+
+// ------------------------------------------------------------------ diagram style (frontmatter config)
+
+/**
+ * Palettes offered by the Styles experiment. Mermaid built-in themes carry a
+ * `canvas` approximation for mmdr's own renderer; mmdr presets use mermaid's
+ * `base` theme with themeVariables, which every mermaid ≥ 10.5 honours.
+ */
+export const STYLE_PRESETS = {
+  '': { name: 'Mermaid default' },
+  neutral: { name: 'Mermaid neutral', theme: 'neutral', canvas: { primaryColor: '#f4f4f4', primaryBorderColor: '#999999', primaryTextColor: '#333333', lineColor: '#666666', clusterBkg: '#fafafa', clusterBorder: '#cccccc' } },
+  forest: { name: 'Mermaid forest', theme: 'forest', canvas: { primaryColor: '#cde498', primaryBorderColor: '#13540c', primaryTextColor: '#000000', lineColor: '#008000', clusterBkg: '#cdffb2', clusterBorder: '#6eaa49' } },
+  dark: { name: 'Mermaid dark', theme: 'dark', canvas: { primaryColor: '#1f2020', primaryBorderColor: '#cccccc', primaryTextColor: '#e0e0e0', lineColor: '#d3d3d3', clusterBkg: '#262a33', clusterBorder: '#444a58', background: '#333333' } },
+  blueprint: {
+    name: 'Blueprint',
+    theme: 'base',
+    vars: { primaryColor: '#EEF2FF', primaryBorderColor: '#4F6BED', primaryTextColor: '#1E2457', lineColor: '#6A74A8', secondaryColor: '#FFF4E6', tertiaryColor: '#F7F8FD', clusterBkg: '#F7F8FD', clusterBorder: '#C3CBF3', edgeLabelBackground: '#FFFFFF', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' },
+  },
+  mint: {
+    name: 'Mint',
+    theme: 'base',
+    vars: { primaryColor: '#E9F7EF', primaryBorderColor: '#2F9E6B', primaryTextColor: '#123A28', lineColor: '#4F8A6E', secondaryColor: '#FFF7E0', tertiaryColor: '#F4FBF7', clusterBkg: '#F4FBF7', clusterBorder: '#B6E2C9', edgeLabelBackground: '#FFFFFF', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' },
+  },
+  sunset: {
+    name: 'Sunset',
+    theme: 'base',
+    vars: { primaryColor: '#FFF1E6', primaryBorderColor: '#E8590C', primaryTextColor: '#4A1D05', lineColor: '#B4643A', secondaryColor: '#EEF2FF', tertiaryColor: '#FFF8F2', clusterBkg: '#FFF8F2', clusterBorder: '#F6C9A8', edgeLabelBackground: '#FFFFFF', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' },
+  },
+  slate: {
+    name: 'Slate',
+    theme: 'base',
+    vars: { primaryColor: '#F4F5F7', primaryBorderColor: '#3D4451', primaryTextColor: '#1F232B', lineColor: '#6B7280', secondaryColor: '#E8EAEE', tertiaryColor: '#FAFAFB', clusterBkg: '#FAFAFB', clusterBorder: '#D5D8DE', edgeLabelBackground: '#FFFFFF', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' },
+  },
+  midnight: {
+    name: 'Midnight',
+    theme: 'base',
+    vars: { darkMode: true, background: '#0F1626', primaryColor: '#18233A', primaryBorderColor: '#7AA2F7', primaryTextColor: '#E6ECF7', lineColor: '#7C8DB5', secondaryColor: '#22304D', tertiaryColor: '#121B2E', clusterBkg: '#121B2E', clusterBorder: '#2E3D63', edgeLabelBackground: '#18233A', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif' },
+  },
+};
+
+export const CURVES = { '': 'Curved', linear: 'Straight', step: 'Orthogonal' };
+
+function splitFrontmatter(preamble) {
+  if (preamble[0]?.trim() !== '---') return { fm: null, rest: preamble };
+  const end = preamble.findIndex((l, i) => i > 0 && l.trim() === '---');
+  return end < 0 ? { fm: null, rest: preamble } : { fm: preamble.slice(1, end), rest: preamble.slice(end + 1) };
+}
+
+/** Parses the YAML subset mermaid frontmatter uses (nested maps of scalars); null if it can't. */
+export function parseYaml(lines) {
+  const root = new Map();
+  const stack = [{ indent: -1, map: root }];
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t || t.startsWith('#')) continue;
+    const indent = raw.length - raw.trimStart().length;
+    const mm = /^("[^"]*"|'[^']*'|[^\s:#"'-][^:#]*?)\s*:(?:\s+(.*?))?\s*$/.exec(t);
+    if (!mm) return null;
+    while (indent <= stack.at(-1).indent) stack.pop();
+    const key = mm[1].replace(/^["']|["']$/g, '');
+    const parent = stack.at(-1).map;
+    if (mm[2] === undefined || mm[2] === '') {
+      const child = new Map();
+      parent.set(key, child);
+      stack.push({ indent, map: child });
+    } else parent.set(key, mm[2]);
+  }
+  return root;
+}
+
+function dumpYaml(map, indent = 0, out = []) {
+  for (const [k, v] of map) {
+    const key = /^[\w.-]+$/.test(k) ? k : JSON.stringify(k);
+    if (v instanceof Map) {
+      if (!v.size) continue;
+      out.push(' '.repeat(indent) + key + ':');
+      dumpYaml(v, indent + 2, out);
+    } else out.push(`${' '.repeat(indent)}${key}: ${v}`);
+  }
+  return out;
+}
+
+const unquote = (v) => (typeof v === 'string' ? v.replace(/^"(.*)"$|^'(.*)'$/, '$1$2') : v);
+
+/** Theme, look, connector curve and theme variables from the diagram's frontmatter. */
+export function readStyle(m) {
+  const { fm } = splitFrontmatter(m.preamble);
+  const y = fm ? parseYaml(fm) : new Map();
+  const cfg = y?.get('config') instanceof Map ? y.get('config') : new Map();
+  const vars = {};
+  const tv = cfg.get('themeVariables');
+  if (tv instanceof Map) for (const [k, v] of tv) if (!(v instanceof Map)) vars[k] = unquote(v);
+  const fc = cfg.get('flowchart');
+  return {
+    theme: unquote(cfg.get('theme') ?? '') || '',
+    look: unquote(cfg.get('look') ?? '') || '',
+    curve: (fc instanceof Map && unquote(fc.get('curve') ?? '')) || '',
+    vars,
+    editable: !!y,
+  };
+}
+
+/** Updates the given style keys in the frontmatter config; false if the frontmatter is too exotic to edit. */
+export function writeStyle(m, style) {
+  const { fm, rest } = splitFrontmatter(m.preamble);
+  const y = fm ? parseYaml(fm) : new Map();
+  if (!y) return false;
+  let cfg = y.get('config');
+  if (!(cfg instanceof Map)) y.set('config', (cfg = new Map()));
+  const scalar = (v) => (typeof v === 'boolean' || typeof v === 'number' ? String(v) : JSON.stringify(String(v)));
+  const put = (map, k, v) => (v ? map.set(k, v) : map.delete(k));
+  if ('theme' in style) put(cfg, 'theme', style.theme);
+  if ('look' in style) put(cfg, 'look', style.look);
+  if ('curve' in style) {
+    let fc = cfg.get('flowchart');
+    if (!(fc instanceof Map)) cfg.set('flowchart', (fc = new Map()));
+    put(fc, 'curve', style.curve);
+    if (!fc.size) cfg.delete('flowchart');
+  }
+  if ('vars' in style) {
+    const entries = Object.entries(style.vars || {});
+    if (entries.length) cfg.set('themeVariables', new Map(entries.map(([k, v]) => [k, scalar(v)])));
+    else cfg.delete('themeVariables');
+  }
+  if (!cfg.size) y.delete('config');
+  const body = dumpYaml(y);
+  m.preamble = body.length ? ['---', ...body, '---', ...rest] : rest;
+  return true;
+}
+
+/** Which STYLE_PRESETS entry the diagram currently uses ('custom' if none). */
+export function presetOf(style) {
+  for (const [id, p] of Object.entries(STYLE_PRESETS)) {
+    if ((p.theme || '') !== style.theme) continue;
+    if (!p.vars && !Object.keys(style.vars).length) return id;
+    if (p.vars && p.vars.primaryColor === style.vars.primaryColor && p.vars.primaryBorderColor === style.vars.primaryBorderColor) return id;
+  }
+  return 'custom';
+}
+
+/** Colours mmdr's canvas should use for this diagram (themeVariables or a built-in theme's approximation). */
+export function canvasPalette(style) {
+  const preset = Object.values(STYLE_PRESETS).find((p) => p.theme && p.theme === style.theme && p.canvas);
+  const v = { ...(preset?.canvas || {}), ...style.vars };
+  return Object.keys(v).length ? v : null;
 }

@@ -24,6 +24,7 @@
   <span id="status" class="status"></span>
   <label class="toggle" title="Save automatically after each change"><input type="checkbox" id="autosave"> Autosave</label>
   <button id="save" class="btn" title="Save (⌘S)">Save</button>
+  <button id="labs" class="btn" title="Feature flags — try experiments">⚗ Labs</button>
   <button id="theme" class="icon-btn" title="Theme"></button>
   <button id="help" class="icon-btn" title="Shortcuts (?)">?</button>
 </header>
@@ -55,6 +56,7 @@
     <div class="stage" id="stage">
       <div class="canvas-wrap" id="canvas-wrap">
         <div class="palette" id="palette"></div>
+        <button class="back" id="back" hidden title="Back (⌘[)">←<span></span></button>
         <div id="canvas" class="canvas"></div>
         <div class="zoom">
           <button data-z="out" title="Zoom out (-)">−</button>
@@ -100,6 +102,20 @@
       <div><kbd>⌘S</kbd></div><div>save now</div>
     </div>
     <p class="muted">Positions are stored in a <code>%% mmdr:layout</code> comment inside the block. Mermaid ignores it, so GitHub still renders its own automatic layout.</p>
+  </div>
+</div>
+<div class="modal" id="labs-modal" hidden>
+  <div class="modal-card">
+    <div class="pane-h">Labs · feature flags <span class="spacer"></span><button class="icon-btn" data-close>×</button></div>
+    <p class="muted" style="padding: 12px 18px 0; margin: 0">Experiments ship behind flags so they can be tried and iterated on. Your toggles apply to this browser; teams can set defaults in <code>.mmdr/config.json</code> (<code>{"flags": {"themes": true}}</code>) or with <code>mmdr --enable themes</code>.</p>
+    <div class="labs-list" id="labs-list"></div>
+  </div>
+</div>
+<div class="modal" id="icon-modal" hidden>
+  <div class="modal-card picker-card">
+    <div class="pane-h">Icons <span class="muted" id="icon-packs"></span><span class="spacer"></span><button class="icon-btn" data-close>×</button></div>
+    <div class="picker-bar"><input id="icon-q" placeholder="Search icons — python, rust, nginx, google cloud run…" autocomplete="off" spellcheck="false"></div>
+    <div class="icon-grid" id="icon-grid"></div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>

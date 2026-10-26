@@ -57,6 +57,7 @@ export class Canvas {
       <svg class="cv" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" class="dot"/></pattern>
+          <filter id="sketch" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
           ${['', '-sel'].map((s) => `
           <marker id="mk-arrow${s}" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0.5 L10,5 L0,9.5 z" class="mk${s}"/></marker>
           <marker id="mk-circle${s}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><circle cx="5" cy="5" r="4" class="mk${s}"/></marker>
@@ -160,7 +161,13 @@ export class Canvas {
         h = ih + (hasLabel ? th + 6 : 0);
         break;
       }
-      case 'icon': w = Math.max(64, tw + 8); h = 56 + th + 6; break;
+      case 'icon': {
+        const s = (+p.h || 48) + (p.form ? 20 : 0);
+        const hasLabel = lines.join('').trim() !== '';
+        w = Math.max(s, hasLabel ? tw + 8 : 0);
+        h = s + (hasLabel ? th + 6 : 0);
+        break;
+      }
     }
     return { w: Math.max(w, 16), h: Math.max(h, 10) };
   }
@@ -333,9 +340,28 @@ export class Canvas {
     });
   }
 
+  /** Mirrors the diagram's mermaid config (palette, look, connector curve) on the canvas. */
+  applyStyle() {
+    const style = M.readStyle(this.m);
+    this.curve = style.curve;
+    const pal = M.canvasPalette(style);
+    const vars = {
+      '--cv-node-fill': 'primaryColor', '--cv-node-stroke': 'primaryBorderColor', '--cv-text': 'primaryTextColor',
+      '--cv-edge': 'lineColor', '--cv-group-fill': 'clusterBkg', '--cv-group-stroke': 'clusterBorder',
+      '--cv-label-bg': 'edgeLabelBackground', '--cv-bg': 'background',
+    };
+    for (const [prop, key] of Object.entries(vars)) {
+      const v = pal?.[key];
+      if (typeof v === 'string' && /^[#\w(),.%\s-]+$/.test(v)) this.root.style.setProperty(prop, v);
+      else this.root.style.removeProperty(prop);
+    }
+    this.svg.classList.toggle('sketch', style.look === 'handDrawn');
+  }
+
   render() {
     if (!this.m) return;
     const m = this.m;
+    this.applyStyle();
     const { x, y, k } = this.view;
     this.vp.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
     this.pattern.setAttribute('patternTransform', `translate(${x},${y}) scale(${k})`);
@@ -370,7 +396,7 @@ export class Canvas {
       if (!A || !B) return;
       const key = [e.from, e.to].sort().join('\u0000');
       const off = (pairIndex[i] - (pairCount.get(key) - 1) / 2) * 14;
-      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, off);
+      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, off, this.curve);
       const sel = this.sel.edges.has(i) ? '-sel' : '';
       const mk = (c) => (c === '>' || c === '<' ? 'arrow' : c === 'o' ? 'circle' : c === 'x' ? 'cross' : '');
       const ms = mk(e.start);
@@ -408,9 +434,24 @@ export class Canvas {
         inner += `<image href="${esc(src)}" x="${-iw / 2}" y="${iy}" width="${iw}" height="${ih}" preserveAspectRatio="xMidYMid meet"/>`;
         if (hasLabel) inner += textLines(lines, 0, top ? -b.h / 2 + (lines.length * LINE) / 2 + 2 : b.h / 2 - (lines.length * LINE) / 2 - 1, st.get('color'));
       } else if (n.shape === 'icon') {
-        inner += `<rect class="sh" x="-28" y="${-b.h / 2}" width="56" height="56" rx="${n.props?.form === 'circle' ? 28 : 8}" style="${esc(styleAttr(st))}"/>`;
-        inner += `<text class="icon-name" x="0" y="${-b.h / 2 + 32}">${esc(String(n.props?.icon || '?').replace(/^.*:/, ''))}</text>`;
-        inner += textLines(lines, 0, b.h / 2 - (lines.length * LINE) / 2, st.get('color'));
+        const p = n.props || {};
+        const s = +p.h || 48;
+        const pad = p.form ? 10 : 0;
+        const box = s + pad * 2;
+        const hasLabel = lines.join('').trim() !== '';
+        const top = p.pos === 't';
+        const by = top && hasLabel ? b.h / 2 - box : -b.h / 2;
+        const sty = esc(styleAttr(st));
+        inner += `<rect class="sh img-frame" x="${-b.w / 2}" y="${-b.h / 2}" width="${b.w}" height="${b.h}" rx="4"/>`;
+        if (p.form === 'circle') inner += `<circle class="sh" cx="0" cy="${by + box / 2}" r="${box / 2}" style="${sty}"/>`;
+        else if (p.form) inner += `<rect class="sh" x="${-box / 2}" y="${by}" width="${box}" height="${box}" rx="${p.form === 'rounded' ? 12 : 3}" style="${sty}"/>`;
+        const icon = this.hooks.icon?.(p.icon || '');
+        if (icon) inner += `<svg x="${-s / 2}" y="${by + pad}" width="${s}" height="${s}" viewBox="0 0 ${icon.w} ${icon.h}">${icon.body}</svg>`;
+        else {
+          inner += `<rect class="icon-missing" x="${-s / 2}" y="${by + pad}" width="${s}" height="${s}" rx="8"><title>${esc(p.icon || 'no icon')}${icon === false ? ' — not installed (mmdr icons add …)' : ''}</title></rect>`;
+          inner += `<text class="icon-name" x="0" y="${by + pad + s / 2 + 4}">${icon === null ? '…' : esc(String(p.icon || '?').replace(/^.*:/, '').slice(0, 10))}</text>`;
+        }
+        if (hasLabel) inner += textLines(lines, 0, top ? -b.h / 2 + (lines.length * LINE) / 2 + 2 : b.h / 2 - (lines.length * LINE) / 2 - 1, st.get('color'));
       } else {
         inner += shapeMarkup(n.shape, b.w, b.h, styleAttr(st));
         const dy = n.shape === 'cyl' || n.shape === 'lin-cyl' ? 6 : n.shape === 'tri' ? 12 : n.shape === 'flip-tri' ? -12 : n.shape.includes('doc') ? -4 : 0;
@@ -434,11 +475,13 @@ export class Canvas {
       const A = this.box(d.from);
       const target = d.target && d.target !== d.from ? this.box(d.target) : null;
       const B = target || { x: d.cur.x, y: d.cur.y, w: 0, h: 0 };
-      const geo = connector(A, B, 0);
+      const geo = connector(A, B, 0, this.curve);
       this.ov.innerHTML = `<path class="connecting" d="${geo.d}" marker-end="url(#mk-arrow-sel)"/>`;
     } else if (d?.type === 'marquee') {
       const x1 = Math.min(d.start.x, d.cur.x), y1 = Math.min(d.start.y, d.cur.y);
       this.ov.innerHTML = `<rect class="marquee" x="${x1}" y="${y1}" width="${Math.abs(d.cur.x - d.start.x)}" height="${Math.abs(d.cur.y - d.start.y)}"/>`;
+    } else if (d?.type === 'move' && this.guides?.length) {
+      this.ov.innerHTML = this.guides.map((l) => `<line class="guide" x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join('');
     } else this.ov.innerHTML = '';
   }
 
@@ -530,14 +573,23 @@ export class Canvas {
     }
     const w = this.world(e);
     if (d.type === 'move') {
-      const dx = w.x - d.start.x;
-      const dy = w.y - d.start.y;
+      let dx = w.x - d.start.x;
+      let dy = w.y - d.start.y;
       if (!d.moved && Math.hypot(dx, dy) * this.view.k < 3) return;
       d.moved = true;
+      let lock = { x: false, y: false };
+      this.guides = [];
+      if (d.primaryNode && !e.altKey && this.hooks.flag?.('smart-guides')) {
+        const g = this.alignGuides(d, dx, dy);
+        dx += g.dx;
+        dy += g.dy;
+        lock = g.lock;
+        this.guides = g.lines;
+      }
       for (const [id, p] of d.orig) {
         const nx = p.x + dx;
         const ny = p.y + dy;
-        this.m.layout[id] = e.altKey ? { x: nx, y: ny } : { x: snap(nx), y: snap(ny) };
+        this.m.layout[id] = { x: e.altKey || lock.x ? nx : snap(nx), y: e.altKey || lock.y ? ny : snap(ny) };
       }
       // which group would the dragged thing land in?
       let target = null;
@@ -564,10 +616,47 @@ export class Canvas {
     }
   }
 
+  /** Smart guides: nudges a drag so the primary node lines up with a nearby node's edges or centre. */
+  alignGuides(d, dx, dy) {
+    const o = d.orig.get(d.primaryNode);
+    const s = this.sizeOf(M.getNode(this.m, d.primaryNode));
+    const px = o.x + dx;
+    const py = o.y + dy;
+    const tol = 7 / this.view.k;
+    const mine = { x: [px - s.w / 2, px, px + s.w / 2], y: [py - s.h / 2, py, py + s.h / 2] };
+    const best = { x: null, y: null };
+    for (const n of this.m.nodes) {
+      if (d.ids.has(n.id)) continue;
+      const b = this.box(n.id);
+      const theirs = { x: [b.x - b.w / 2, b.x, b.x + b.w / 2], y: [b.y - b.h / 2, b.y, b.y + b.h / 2] };
+      for (const ax of ['x', 'y']) {
+        for (let i = 0; i < 3; i++) {
+          for (let j = 0; j < 3; j++) {
+            if ((i === 1) !== (j === 1)) continue; // centre to centre, edge to edge
+            const diff = theirs[ax][j] - mine[ax][i];
+            const cost = Math.abs(diff) * (i === 1 ? 0.5 : 1); // prefer centre lines
+            if (Math.abs(diff) < tol && (!best[ax] || cost < best[ax].cost)) best[ax] = { diff, cost, at: theirs[ax][j], b };
+          }
+        }
+      }
+    }
+    const lines = [];
+    if (best.x) {
+      const { at, b } = best.x;
+      lines.push({ x1: at, x2: at, y1: Math.min(py - s.h / 2, b.y - b.h / 2) - 14, y2: Math.max(py + s.h / 2, b.y + b.h / 2) + 14 });
+    }
+    if (best.y) {
+      const { at, b } = best.y;
+      lines.push({ y1: at, y2: at, x1: Math.min(px - s.w / 2, b.x - b.w / 2) - 14, x2: Math.max(px + s.w / 2, b.x + b.w / 2) + 14 });
+    }
+    return { dx: best.x?.diff || 0, dy: best.y?.diff || 0, lock: { x: !!best.x, y: !!best.y }, lines };
+  }
+
   onUp(e) {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    this.guides = [];
     const m = this.m;
     if (d.type === 'pan') {
       if (!d.moved && this.sel.nodes.size + this.sel.edges.size + this.sel.groups.size) this.select({});
@@ -698,7 +787,28 @@ export class Canvas {
   addShape(shape, at) {
     if (shape === 'group') return this.groupSelection(at);
     if (shape === 'image') return this.hooks.pickImage?.(at);
+    if (shape === 'icon') return this.hooks.pickIcon?.(at);
+    if (shape === 'sticky') return this.addSticky(at);
     const n = this.createNode({ shape, at, parent: at ? this.groupAt(at) : null });
+    this.select({ nodes: [n.id] });
+    this.changed('add');
+    this.editLabel('node', n.id);
+  }
+
+  /** Adds an icon node (e.g. "logos:python") from the icon picker. */
+  addIcon(ref, at, label) {
+    const n = this.createNode({ shape: 'icon', label, at, parent: at ? this.groupAt(at) : null, props: { icon: ref, pos: 'b', h: '48' } });
+    if (!at) this.m.layout[n.id] = this.freeSpot(this.m.layout[n.id], this.sizeOf(n), n.id);
+    this.select({ nodes: [n.id] });
+    this.changed('add');
+  }
+
+  /** Sticky notes are plain nodes with a `sticky` classDef, so they render everywhere. */
+  addSticky(at) {
+    const m = this.m;
+    if (!m.classDefs.some((c) => c.name === 'sticky')) m.classDefs.push({ name: 'sticky', css: 'fill:#fff4a3,stroke:#e2c94b,color:#3d3300' });
+    const n = this.createNode({ shape: 'rect', at, parent: at ? this.groupAt(at) : null });
+    m.classes[n.id] = ['sticky'];
     this.select({ nodes: [n.id] });
     this.changed('add');
     this.editLabel('node', n.id);
@@ -734,7 +844,7 @@ export class Canvas {
       if (!e) return;
       const A = this.box(e.from);
       const B = this.box(e.to);
-      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, 0);
+      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, 0, this.curve);
       value = e.label;
       at = this.toScreen(geo.mx, geo.my);
       width = 160;
@@ -989,8 +1099,11 @@ function textLines(lines, x, cy, color) {
   return `<text class="lbl"${style}>${lines.map((l, i) => `<tspan x="${x}" y="${y0 + i * LINE}">${esc(l) || ' '}</tspan>`).join('')}</text>`;
 }
 
-/** Curved connector that leaves/enters the facing sides of two boxes. */
-function connector(A, B, off) {
+/**
+ * Connector that leaves/enters the facing sides of two boxes, drawn like
+ * mermaid's `flowchart.curve`: curved (default), straight (linear) or orthogonal (step*).
+ */
+function connector(A, B, off, curve = '') {
   const dx = B.x - A.x;
   const dy = B.y - A.y;
   const horiz = Math.abs(dx) * (A.h + B.h + 1) > Math.abs(dy) * (A.w + B.w + 1);
@@ -1010,6 +1123,14 @@ function connector(A, B, off) {
   const c1 = horiz ? { x: p1.x + sx * c, y: p1.y } : { x: p1.x, y: p1.y + sy * c };
   const c2 = horiz ? { x: p2.x - sx * c, y: p2.y } : { x: p2.x, y: p2.y - sy * c };
   const r = (v) => Math.round(v * 10) / 10;
+  if (curve === 'linear') return { d: `M${r(p1.x)},${r(p1.y)} L${r(p2.x)},${r(p2.y)}`, mx: (p1.x + p2.x) / 2, my: (p1.y + p2.y) / 2 };
+  if (curve.startsWith('step')) {
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+    return horiz
+      ? { d: `M${r(p1.x)},${r(p1.y)} H${r(mx)} V${r(p2.y)} H${r(p2.x)}`, mx, my }
+      : { d: `M${r(p1.x)},${r(p1.y)} V${r(my)} H${r(p2.x)} V${r(p2.y)}`, mx, my };
+  }
   return {
     d: `M${r(p1.x)},${r(p1.y)} C${r(c1.x)},${r(c1.y)} ${r(c2.x)},${r(c2.y)} ${r(p2.x)},${r(p2.y)}`,
     mx: (p1.x + 3 * c1.x + 3 * c2.x + p2.x) / 8,

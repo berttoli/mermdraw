@@ -3,6 +3,8 @@
 
 import * as M from './model.js';
 import { Canvas, shapeMarkup, labelToEditor, editorToLabel } from './canvas.js';
+import { FLAGS, flag, flagSource, inheritedFlag, initFlags, onFlags, setFlag } from './flags.js';
+import { IconStore, prettyIconName } from './icons.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -43,9 +45,11 @@ const S = {
   scope: 'block',
   hist: new Map(),
   layoutToken: 0,
+  nav: [], // drill-down history: [{path, index, title}]
 };
 
 let canvas;
+const iconStore = new IconStore(() => canvas?.render());
 const codeTa = $('#code textarea');
 const codePre = $('#code pre');
 const docTa = $('#doc');
@@ -64,6 +68,9 @@ async function init() {
       pendingImageAt = at;
       $('#img-input').click();
     },
+    pickIcon: (at) => openIconPicker((ref) => canvas.addIcon(ref, at, prettyIconName(ref))),
+    icon: (ref) => (flag('icons') ? iconStore.get(ref) : false),
+    flag,
     zoom: (k) => ($('#zoom-label').textContent = Math.round(k * 100) + '%'),
   });
   window.mmdr = { S, canvas }; // handy from the devtools console
@@ -76,6 +83,12 @@ async function init() {
   } catch {
     return showFatal('Cannot reach the mmdr server. Is it still running?');
   }
+  const config = await fetch('/api/config').then((r) => r.json()).catch(() => ({}));
+  initFlags({ project: config?.flags, cli: S.info.flags });
+  onFlags(applyFlags);
+  await iconStore.refresh();
+  iconStore.registerWithMermaid(mermaid);
+  buildPalette();
   await refreshFiles();
   const params = new URLSearchParams(location.search);
   const file = params.get('file') || S.info.initial || S.files.find((f) => f.diagrams)?.path || S.files[0]?.path;
@@ -179,7 +192,9 @@ function loadSource(src, { fit = false, fromCode = false, keep = false } = {}) {
     if (m.nodes.length && m.nodes.every((n) => !m.layout[n.id])) {
       mermaidLayout(src).then((pos) => {
         if (token !== S.layoutToken) return;
-        if (pos) for (const [id, p] of Object.entries(pos)) if (M.getNode(m, id)) m.layout[id] = p;
+        // only trust mermaid's layout if it placed (nearly) everything; else lay out from scratch
+        const placed = pos ? m.nodes.filter((n) => pos[n.id]).length : 0;
+        if (placed >= m.nodes.length * 0.8) for (const [id, p] of Object.entries(pos)) if (M.getNode(m, id)) m.layout[id] = p;
         canvas.setModel(m, { fit: true });
         renderInspector(true);
       });
@@ -426,8 +441,10 @@ async function mermaidLayout(src) {
     const rect = root.getBoundingClientRect();
     const scale = vb && vb.width && rect.width ? vb.width / rect.width : 1;
     const pos = {};
-    for (const el of root.querySelectorAll('g.node')) {
-      const mm = /flowchart-(.+)-\d+$/.exec(el.id);
+    // plain nodes are g.node; icon/image nodes are g.icon-shape / g.image-shape
+    for (const el of root.querySelectorAll('g[id]')) {
+      const mm = /(?:^|-)flowchart-(.+)-\d+$/.exec(el.id);
+      if (/\b(cluster|edge|label)/.test(el.getAttribute('class') || '')) continue;
       if (!mm) continue;
       const r = el.getBoundingClientRect();
       pos[mm[1]] = {
@@ -447,7 +464,8 @@ async function mermaidLayout(src) {
 async function autoLayout() {
   if (!S.model) return;
   const m = S.model;
-  const pos = await mermaidLayout(S.src);
+  let pos = await mermaidLayout(S.src);
+  if (pos && m.nodes.filter((n) => pos[n.id]).length < m.nodes.length * 0.8) pos = null;
   const fallback = !pos;
   const layout = pos || M.layeredLayout(m, (id) => canvas.sizeOf(M.getNode(m, id)));
   for (const n of m.nodes) if (layout[n.id]) m.layout[n.id] = layout[n.id];
@@ -575,7 +593,10 @@ function nodeInspector(el, n) {
     ${n.shape === 'image' ? row('Image', `<div class="inline"><input data-p="img" value="${esc(p.img || '')}" placeholder="./assets/logo.png or https://…"><button class="btn small" data-act="pick">…</button></div>`)
       + row('Size', `<div class="inline"><input data-p="w" value="${esc(p.w || '')}" placeholder="w"><input data-p="h" value="${esc(p.h || '')}" placeholder="h"></div>`)
       + row('Caption', seg('pos', p.pos || 'b', [['t', 'Top'], ['b', 'Bottom']])) : ''}
-    ${n.shape === 'icon' ? row('Icon', `<input data-p="icon" value="${esc(p.icon || '')}" placeholder="fa:user, logos:aws">`) + row('Form', seg('form', p.form || '', [['', 'None'], ['square', 'Square'], ['circle', 'Circle'], ['rounded', 'Rounded']])) : ''}
+    ${n.shape === 'icon' ? row('Icon', `<div class="inline"><span class="icon-prev">${iconPreview(p.icon)}</span><input data-p="icon" value="${esc(p.icon || '')}" placeholder="logos:python" spellcheck="false"><button class="btn small" data-act="pick-icon">Browse…</button></div>`)
+      + row('Form', seg('form', p.form || '', [['', 'None'], ['square', 'Square'], ['circle', 'Circle'], ['rounded', 'Rounded']]))
+      + row('Size', `<input data-p="h" value="${esc(p.h || '')}" placeholder="48 (height in px)">`)
+      + row('Caption', seg('pos', p.pos || 'b', [['t', 'Top'], ['b', 'Bottom']])) : ''}
     ${row('Group', `<select data-k="parent">${groupOptions(n.parent)}</select>`)}
     ${row('Link', `<div class="inline"><input data-k="url" value="${esc(link.url || '')}" placeholder="https://… or ./service.md#2"><button class="btn small" data-act="follow"${link.url ? '' : ' disabled'} title="Open link">↗</button></div>`)}
     ${link.url ? row('Tooltip', `<input data-k="tooltip" value="${esc(link.tooltip || '')}">`) : ''}
@@ -653,6 +674,15 @@ function nodeInspector(el, n) {
       pendingImageFor = id;
       $('#img-input').click();
     },
+    'pick-icon': () =>
+      openIconPicker((ref) => {
+        const nd = node();
+        const auto = !nd.label || nd.label === nd.id || nd.label === prettyIconName(nd.props.icon || '');
+        nd.props.icon = ref;
+        if (auto) nd.label = prettyIconName(ref);
+        commitNow();
+        renderInspector(true);
+      }, String(p.icon || '').replace(/^[^:]*:/, '')),
     connect: () => canvas.addConnected(id),
     dup: () => canvas.duplicateSelection(),
     delete: () => canvas.deleteSelection(),
@@ -778,16 +808,44 @@ function multiInspector(el, sel) {
   });
 }
 
+function styleSection(m) {
+  if (!flag('themes')) return '';
+  const style = M.readStyle(m);
+  const preset = M.presetOf(style);
+  const curve = style.curve.startsWith('step') ? 'step' : style.curve === 'linear' ? 'linear' : '';
+  return `<div class="ins-sub">Style <span class="stage-chip experimental">labs</span></div>
+    ${row('Theme', `<select data-k="preset">${Object.entries(M.STYLE_PRESETS).map(([id, p]) => `<option value="${id}"${id === preset ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}${preset === 'custom' ? '<option value="custom" selected>Custom</option>' : ''}</select>`)}
+    ${row('Look', seg('look', style.look === 'handDrawn' ? 'handDrawn' : '', [['', 'Classic'], ['handDrawn', 'Hand-drawn']]))}
+    ${row('Lines', seg('curve', curve, Object.entries(M.CURVES)))}
+    ${style.editable ? '' : '<p class="warn">This diagram\'s frontmatter uses YAML mmdr can\'t rewrite safely — edit the style in the code.</p>'}`;
+}
+
+function bindStyleSection(el, m) {
+  const write = (patch) => {
+    if (!M.writeStyle(m, patch)) return toast('Frontmatter is too complex to edit here');
+    commitNow();
+    renderInspector(true);
+  };
+  $('[data-k="preset"]', el)?.addEventListener('change', (e) => {
+    const p = M.STYLE_PRESETS[e.target.value];
+    if (p) write({ theme: p.theme || '', vars: p.vars || null });
+  });
+  bindSeg(el, 'look', (v) => write({ look: v }));
+  bindSeg(el, 'curve', (v) => write({ curve: v }));
+}
+
 function diagramInspector(el) {
   const m = S.model;
   el.innerHTML = `<div class="ins-h"><span class="tag">Diagram</span><code>${esc(m.keyword)} ${esc(m.dir)}</code></div>
     ${row('Direction', seg('dir', m.dir === 'TB' ? 'TD' : m.dir, [['TD', '↓ TD'], ['LR', '→ LR'], ['BT', '↑ BT'], ['RL', '← RL']]))}
     ${row('Keyword', seg('kw', m.keyword, [['flowchart', 'flowchart'], ['graph', 'graph']]))}
+    ${styleSection(m)}
     <div class="ins-actions"><button class="btn" data-act="layout" title="Reposition everything the way mermaid lays it out">Auto-layout</button><button class="btn" data-act="fit">Fit view <kbd>0</kbd></button></div>
     ${m.warnings.length ? `<div class="warn">Kept verbatim (not editable on the canvas):<ul>${m.warnings.slice(0, 8).map((w) => `<li>${esc(w.replace(/^kept verbatim: /, ''))}</li>`).join('')}</ul></div>` : ''}
     <p class="ins-note">Double-click the canvas to add a node, drag from a node's ● handle to connect, drop images from Finder, press <kbd>?</kbd> for all shortcuts.</p>`;
   bindSeg(el, 'dir', (v) => ((m.dir = v), commitNow(), renderInspector(true)));
   bindSeg(el, 'kw', (v) => ((m.keyword = v), commitNow(), renderInspector(true)));
+  bindStyleSection(el, m);
   bindActions(el, { layout: autoLayout, fit: () => canvas.fit() });
 }
 
@@ -956,14 +1014,41 @@ function assetUrl(p) {
   return '/raw/' + resolveRel(p).split('/').map(enc).join('/');
 }
 
+const currentTitle = () => S.scan?.blocks[S.index]?.title || S.path?.split('/').pop() || '';
+
+/** Opens a node link: another diagram (drill-down, with a way back) or an external page. */
 function followLink(url) {
   if (/^[a-z][\w+.-]*:/i.test(url)) return window.open(url, '_blank', 'noopener');
   const [p, hash = ''] = url.split('#');
   const n = (parseInt(hash.replace(/^d=?/, ''), 10) || 1) - 1;
-  if (!p) return selectBlock(Math.min(n, S.scan.blocks.length - 1), { fit: true });
+  const from = { path: S.path, index: S.index, title: currentTitle() };
+  if (!p) {
+    S.nav.push(from);
+    selectBlock(Math.min(n, S.scan.blocks.length - 1), { fit: true });
+    return updateBack();
+  }
   const target = resolveRel(p);
-  if (/\.(md|markdown|mmd|mermaid)$/i.test(target)) return openFile(target, n).then(updateUrl);
-  window.open(assetUrl(p), '_blank', 'noopener');
+  if (!/\.(md|markdown|mmd|mermaid)$/i.test(target)) return window.open(assetUrl(p), '_blank', 'noopener');
+  S.nav.push(from);
+  return openFile(target, n).then(() => {
+    updateUrl();
+    updateBack();
+  });
+}
+
+async function goBack() {
+  const prev = S.nav.pop();
+  if (!prev) return;
+  if (prev.path === S.path) selectBlock(prev.index, { fit: true });
+  else await openFile(prev.path, prev.index);
+  updateUrl();
+  updateBack();
+}
+
+function updateBack() {
+  const prev = S.nav.at(-1);
+  $('#back').hidden = !prev;
+  $('#back span').textContent = prev ? prev.title : '';
 }
 
 function updateUrl() {
@@ -979,15 +1064,24 @@ const PALETTE = [
   ['cloud', 'Cloud'], ['h-cyl', 'Queue / stream'], null, ['text', 'Text'], ['image', 'Image'], ['group', 'Group (subgraph)'],
 ];
 
+function paletteItems() {
+  const items = [...PALETTE];
+  if (flag('icons')) items.splice(items.indexOf(null) + 1, 0, ['icon', 'Icon (logos, devicon…)']);
+  if (flag('sticky-notes')) items.push(['sticky', 'Sticky note']);
+  return items;
+}
+
 function buildPalette() {
   const el = $('#palette');
-  el.innerHTML = PALETTE.map((p) => {
+  el.innerHTML = paletteItems().map((p) => {
     if (!p) return '<div class="sep"></div>';
     const [shape, label] = p;
     let icon;
     if (shape === 'text') icon = '<span class="glyph">T</span>';
     else if (shape === 'image') icon = '<svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17l5-5 4 4 2-2 3 3" style="fill:none"/></svg>';
     else if (shape === 'group') icon = '<svg viewBox="0 0 24 24" width="24" height="22"><rect x="2" y="4" width="20" height="16" rx="3" style="stroke-dasharray:3 2;fill:none"/><rect x="6" y="10" width="7" height="5" rx="1"/></svg>';
+    else if (shape === 'icon') icon = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.4 6.8 19.2l1-5.9-4.3-4.1 5.9-.8z"/></svg>';
+    else if (shape === 'sticky') icon = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 4h16v11l-5 5H4z" style="fill:#fff4a3;stroke:#c9ad2c"/><path d="M15 20v-5h5" style="fill:none;stroke:#c9ad2c"/></svg>';
     else {
       const [w, h] = shape === 'circle' ? [22, 22] : shape === 'diam' ? [30, 22] : [30, 19];
       icon = `<svg viewBox="-17 -13 34 26" width="30" height="24">${shapeMarkup(shape, w, h, '')}</svg>`;
@@ -1003,8 +1097,104 @@ function buildPalette() {
   }
 }
 
+// ------------------------------------------------------------------ labs (feature flags)
+
+const mdLite = (t) => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>');
+
+function renderLabs() {
+  const el = $('#labs-list');
+  el.innerHTML = FLAGS.map((f) => {
+    const src = flagSource(f.id);
+    const from =
+      src === 'user' ? `set in this browser · <button data-reset="${f.id}">reset to ${inheritedFlag(f.id) ? 'on' : 'off'}</button>`
+      : src === 'cli' ? 'set on the command line'
+      : src === 'project' ? 'set by .mmdr/config.json'
+      : `default ${f.default ? 'on' : 'off'}`;
+    return `<div class="flag"><h4>${esc(f.name)} <span class="stage-chip ${f.stage}">${f.stage}</span></h4>
+      <label class="switch" title="${flag(f.id) ? 'On' : 'Off'}"><input type="checkbox" data-flag="${f.id}"${flag(f.id) ? ' checked' : ''}><i></i></label>
+      <p>${mdLite(f.desc)}</p>
+      <div class="src">Inspired by ${esc(f.inspiredBy)} · <code>${f.id}</code> · ${from}</div></div>`;
+  }).join('');
+  for (const inp of $$('[data-flag]', el)) inp.addEventListener('change', () => setFlag(inp.dataset.flag, inp.checked));
+  for (const b of $$('[data-reset]', el)) b.addEventListener('click', () => setFlag(b.dataset.reset, undefined));
+}
+
+function applyFlags() {
+  buildPalette();
+  renderInspector(true);
+  canvas.render();
+  if (!$('#labs-modal').hidden) renderLabs();
+}
+
+// ------------------------------------------------------------------ icon picker
+
+let pickerCb = null;
+let pickerSeq = 0;
+
+function iconPreview(ref) {
+  const ic = ref && flag('icons') ? iconStore.get(ref) : false;
+  return ic ? `<svg viewBox="0 0 ${ic.w} ${ic.h}">${ic.body}</svg>` : '<span class="muted">?</span>';
+}
+
+function openIconPicker(onPick, query = '') {
+  pickerCb = onPick;
+  $('#icon-modal').hidden = false;
+  $('#icon-packs').textContent = iconStore.packs.size ? `· ${[...iconStore.packs.keys()].join(', ')}` : '';
+  const q = $('#icon-q');
+  q.value = query;
+  q.focus();
+  q.select();
+  runIconSearch();
+}
+
+async function runIconSearch() {
+  const grid = $('#icon-grid');
+  if (!iconStore.packs.size) {
+    grid.innerHTML = `<div class="picker-empty">No icon packs installed yet. In a terminal run<br><br><code>mmdr icons add logos devicon</code><br><br>and reload this page. Add <code>--vendor</code> to keep the packs in this repository for your team.</div>`;
+    return;
+  }
+  const seq = ++pickerSeq;
+  if (!iconStore.data.size) grid.innerHTML = '<div class="picker-empty">Loading icon packs…</div>';
+  const results = await iconStore.search($('#icon-q').value);
+  if (seq !== pickerSeq) return;
+  grid.innerHTML = results.map((r) => {
+    const ic = iconStore.get(r.ref);
+    return ic ? `<button class="icon-cell" data-ref="${esc(r.ref)}" title="${esc(r.ref)}"><svg viewBox="0 0 ${ic.w} ${ic.h}">${ic.body}</svg><span>${esc(r.name)}</span></button>` : '';
+  }).join('') || '<div class="picker-empty">No icons match.</div>';
+}
+
+function pickIcon(ref) {
+  $('#icon-modal').hidden = true;
+  const cb = pickerCb;
+  pickerCb = null;
+  if (ref && cb) cb(ref);
+}
+
 function bindUI() {
-  $('#file').addEventListener('change', (e) => openFile(e.target.value).then(updateUrl));
+  $('#file').addEventListener('change', (e) => {
+    S.nav = [];
+    updateBack();
+    openFile(e.target.value).then(updateUrl);
+  });
+  $('#back').addEventListener('click', goBack);
+  $('#labs').addEventListener('click', () => {
+    renderLabs();
+    $('#labs-modal').hidden = false;
+  });
+  let iconTimer = 0;
+  $('#icon-q').addEventListener('input', () => {
+    clearTimeout(iconTimer);
+    iconTimer = setTimeout(runIconSearch, 120);
+  });
+  $('#icon-q').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') pickIcon($('#icon-grid .icon-cell')?.dataset.ref);
+  });
+  $('#icon-grid').addEventListener('click', (e) => pickIcon(e.target.closest('[data-ref]')?.dataset.ref));
+  for (const modal of $$('.modal')) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('[data-close]')) modal.hidden = true;
+    });
+  }
   $('#file').addEventListener('focus', () => refreshFiles());
   $$('#views button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   $('#autosave').addEventListener('change', (e) => {
@@ -1023,9 +1213,6 @@ function bindUI() {
     applyTheme(next);
   });
   $('#help').addEventListener('click', () => ($('#help-modal').hidden = false));
-  $('#help-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'help-modal' || e.target.closest('[data-close]')) $('#help-modal').hidden = true;
-  });
   $('#add-diagram').addEventListener('click', () => {
     const f = $('#new-form');
     f.hidden = !f.hidden;
@@ -1121,7 +1308,12 @@ function bindUI() {
       e.preventDefault();
       return setView(['canvas', 'split', 'preview', 'doc'][+e.code.slice(5) - 1]);
     }
+    if (e.key === 'Escape') $$('.modal').forEach((m) => (m.hidden = true));
     if (typing(e.target)) return;
+    if (mod && e.key === '[') {
+      e.preventDefault();
+      return goBack();
+    }
     if (mod && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
       e.preventDefault();
       return undo(e.key.toLowerCase() === 'y' || e.shiftKey ? 1 : -1);

@@ -130,46 +130,54 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 .doc { width: 100%; height: 100%; border: 0; border-radius: 0; resize: none; padding: 20px 28px; font: 13px/1.6 var(--mono); background: var(--panel); }
 
 /* ---------- canvas */
-.canvas { position: absolute; inset: 0; outline: none; }
-.cv { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: none; }
+.canvas {
+  position: absolute; inset: 0; outline: none;
+  /* a diagram's mermaid theme overrides these inline (see Canvas.applyStyle) */
+  --cv-node-fill: var(--node-fill); --cv-node-stroke: var(--node-stroke); --cv-text: var(--fg); --cv-edge: var(--edge);
+  --cv-group-fill: var(--group-fill); --cv-group-stroke: var(--group-stroke); --cv-label-bg: var(--label-bg); --cv-bg: transparent;
+}
+.cv { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: none; background: var(--cv-bg); }
+.cv.sketch .sh, .cv.sketch .sh-line, .cv.sketch .eline, .cv.sketch .gbox { filter: url(#sketch); }
 .cv .dot { fill: var(--grid); }
 .cv-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; text-align: center; padding: 0 20px; }
 .cv-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; color: var(--muted); background: var(--bg); z-index: 3; }
 .cv-msg b { color: var(--fg); }
 .node { cursor: move; }
-.node .sh { fill: var(--node-fill); stroke: var(--node-stroke); stroke-width: 1.4; }
-.node .sh-line { fill: none; stroke: var(--node-stroke); stroke-width: 1.2; }
-.node .sh-solid { fill: var(--node-stroke); }
+.node .sh { fill: var(--cv-node-fill); stroke: var(--cv-node-stroke); stroke-width: 1.4; }
+.node .sh-line { fill: none; stroke: var(--cv-node-stroke); stroke-width: 1.2; }
+.node .sh-solid { fill: var(--cv-node-stroke); }
 .node .sh-hit { fill: transparent; }
 .node .sh-text, .node .img-frame { fill: transparent; stroke: transparent; }
 .node.sel .sh { stroke: var(--accent); stroke-width: 2.2; }
 .node.sel .sh-text, .node.sel .img-frame { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 4 3; }
 .node:hover .sh-text { stroke: var(--line); }
-.lbl { font: 14px var(--font); fill: var(--fg); text-anchor: middle; pointer-events: none; }
+.lbl { font: 14px var(--font); fill: var(--cv-text); text-anchor: middle; pointer-events: none; }
 .s-text .lbl { fill: var(--muted); font-style: italic; }
 .node .hd { fill: var(--accent); stroke: var(--panel); stroke-width: 2; opacity: 0; cursor: crosshair; transition: opacity 0.12s; }
 .node:hover .hd, .node.sel .hd { opacity: 1; }
 .node .hd:hover { r: 7; }
 .link-badge { font-size: 11px; fill: var(--accent); text-anchor: end; pointer-events: none; }
-.icon-name { font: 11px var(--mono); text-anchor: middle; fill: var(--muted); }
-.edge .eline { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+.icon-name { font: 11px var(--mono); text-anchor: middle; fill: var(--muted); pointer-events: none; }
+.icon-missing { fill: var(--accent-bg); stroke: var(--group-stroke); stroke-dasharray: 4 3; }
+.guide { stroke: #f0437f; stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.edge .eline { fill: none; stroke: var(--cv-edge); stroke-width: 1.6; }
 .edge.thick .eline { stroke-width: 3.2; }
 .edge.dotted .eline { stroke-dasharray: 3 4; }
 .edge.invisible .eline { stroke-dasharray: 2 6; opacity: 0.35; }
 .edge .ehit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
 .edge:hover .eline { stroke: var(--accent); opacity: 0.7; }
 .edge.sel .eline { stroke: var(--accent); opacity: 1; }
-.mk { fill: var(--edge); }
+.mk { fill: var(--cv-edge); }
 .mk-sel { fill: var(--accent); }
-.mkx { stroke: var(--edge); stroke-width: 1.8; fill: none; }
+.mkx { stroke: var(--cv-edge); stroke-width: 1.8; fill: none; }
 .mkx-sel { stroke: var(--accent); stroke-width: 1.8; fill: none; }
 .elabel { cursor: pointer; }
-.elabel rect { fill: var(--label-bg); stroke: var(--line); }
+.elabel rect { fill: var(--cv-label-bg); stroke: var(--line); }
 .elabel .lbl { font-size: 12.5px; }
-.grp .gbox { fill: var(--group-fill); stroke: var(--group-stroke); stroke-width: 1.3; }
+.grp .gbox { fill: var(--cv-group-fill); stroke: var(--cv-group-stroke); stroke-width: 1.3; }
 .grp .gbar { fill: transparent; cursor: move; }
 .grp { cursor: move; }
-.grp .gtitle { font: 600 12.5px var(--font); fill: var(--muted); pointer-events: none; }
+.grp .gtitle { font: 600 12.5px var(--font); fill: var(--cv-text); opacity: 0.72; pointer-events: none; }
 .grp .gdir { font-weight: 400; font-size: 10.5px; fill: var(--accent); }
 .grp.empty .gbox { stroke-dasharray: 5 4; }
 .grp.sel .gbox { stroke: var(--accent); stroke-width: 2; }
@@ -250,3 +258,36 @@ select:focus, input:focus, textarea:focus { border-color: var(--accent); }
   .top { gap: 6px; padding: 0 8px; overflow-x: auto; }
   #file { max-width: 140px; }
 }
+
+/* ---------- labs, icon picker, drill-down */
+.labs-list { padding: 6px 18px 16px; display: grid; gap: 4px; }
+.flag { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.flag:last-child { border-bottom: 0; }
+.flag h4 { margin: 0; font-size: 13.5px; display: flex; gap: 8px; align-items: center; }
+.flag p { margin: 0; color: var(--muted); grid-column: 1; }
+.flag .src { font-size: 11.5px; color: var(--muted); grid-column: 1; }
+.flag .src button { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font: inherit; }
+.stage-chip { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); }
+.stage-chip.experimental { background: rgba(201, 138, 18, 0.14); color: var(--warn); }
+.switch { position: relative; width: 36px; height: 20px; grid-row: 1 / span 3; grid-column: 2; align-self: center; }
+.switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; position: absolute; z-index: 1; }
+.switch i { position: absolute; inset: 0; border-radius: 10px; background: var(--line); transition: background 0.15s; }
+.switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(16px); }
+.picker-card { width: min(720px, 100%); }
+.picker-bar { display: flex; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.picker-bar input { flex: 1; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; padding: 12px 18px 18px; max-height: 56vh; overflow: auto; }
+.icon-cell { display: grid; justify-items: center; gap: 4px; padding: 10px 4px 6px; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; color: var(--fg); }
+.icon-cell:hover, .icon-cell:focus { border-color: var(--accent); background: var(--accent-bg); outline: none; }
+.icon-cell svg { width: 36px; height: 36px; }
+.icon-cell span { font-size: 10.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-empty { padding: 26px 18px; color: var(--muted); }
+.picker-empty code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.icon-prev { display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); flex: none; }
+.icon-prev svg { width: 22px; height: 22px; }
+.back { position: absolute; z-index: 2; left: 66px; top: 12px; display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); cursor: pointer; color: var(--fg); max-width: 50%; }
+.back:hover { border-color: var(--accent); }
+.back span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-sub { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }

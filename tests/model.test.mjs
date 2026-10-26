@@ -289,3 +289,52 @@ test('css helpers', () => {
   css.set('fill', '');
   assert.equal(M.cssString(css), 'stroke:#0f0');
 });
+
+test('icon nodes keep their props in canonical order', () => {
+  const src = 'flowchart LR\n  py@{ icon: "logos:python", form: "circle", label: "Cart API", pos: "t", h: 40 }';
+  const m = M.parseFlowchart(src);
+  const n = M.getNode(m, 'py');
+  assert.equal(n.shape, 'icon');
+  assert.deepEqual(n.props, { icon: 'logos:python', form: 'circle', pos: 't', h: '40' });
+  assert.match(M.serializeFlowchart(m), /py@\{ icon: "logos:python", form: "circle", label: "Cart API", pos: "t", h: 40 \}/);
+});
+
+test('style config is written to frontmatter without touching other keys', () => {
+  const m = M.parseFlowchart('---\ntitle: Org\nconfig:\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\n  A --> B');
+  assert.ok(M.writeStyle(m, { theme: 'base', look: 'handDrawn', curve: 'step', vars: M.STYLE_PRESETS.mint.vars }));
+  const out = M.serializeFlowchart(m);
+  assert.match(out, /^---\ntitle: Org\nconfig:\n  flowchart:\n    htmlLabels: false\n    curve: step\n  theme: base\n  look: handDrawn\n  themeVariables:\n    primaryColor: "#E9F7EF"/);
+  const st = M.readStyle(M.parseFlowchart(out));
+  assert.deepEqual([st.theme, st.look, st.curve, M.presetOf(st)], ['base', 'handDrawn', 'step', 'mint']);
+  M.writeStyle(m, { theme: '', look: '', curve: '', vars: null });
+  assert.equal(M.serializeFlowchart(m), '---\ntitle: Org\nconfig:\n  flowchart:\n    htmlLabels: false\n---\nflowchart LR\n    A\n    B\n    A --> B');
+  const plain = M.parseFlowchart('flowchart LR\n  A');
+  M.writeStyle(plain, { theme: 'forest' });
+  assert.equal(M.serializeFlowchart(plain), '---\nconfig:\n  theme: forest\n---\nflowchart LR\n    A');
+  assert.equal(M.presetOf(M.readStyle(plain)), 'forest');
+});
+
+test('exotic frontmatter is left alone', () => {
+  const m = M.parseFlowchart('---\nconfig:\n  themeCSS:\n    - a\n---\nflowchart LR\n  A');
+  assert.equal(M.readStyle(m).editable, false);
+  assert.equal(M.writeStyle(m, { theme: 'dark' }), false);
+});
+
+test('bundled examples parse cleanly and round-trip', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const dir = new URL('../examples/', import.meta.url).pathname;
+  const files = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.md'));
+  let flowcharts = 0;
+  for (const f of files) {
+    for (const b of M.scanDoc(fs.readFileSync(path.join(dir, f), 'utf8')).blocks) {
+      if (!M.isFlowchartKind(b.kind)) continue;
+      flowcharts++;
+      const m = M.parseFlowchart(b.source);
+      assert.deepEqual(m.warnings, [], `${f}#${b.index + 1}`);
+      const once = M.serializeFlowchart(m);
+      assert.equal(M.serializeFlowchart(M.parseFlowchart(once)), once, `${f}#${b.index + 1} is stable`);
+    }
+  }
+  assert.ok(flowcharts >= 8);
+});
