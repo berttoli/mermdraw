@@ -92,7 +92,7 @@ cmd_verify() {
   esac
 
   local unexpected
-  unexpected="$(cd "$dir" && find . -mindepth 1 | grep -vE "^\./$name(/(mmdr|mmdr\.exe|README\.md|LICENSE|CHANGELOG\.md))?\$" || true)"
+  unexpected="$( (cd "$dir" && find . -mindepth 1) | grep -vE "^\./$name(/(mmdr|mmdr\.exe|README\.md|LICENSE|CHANGELOG\.md))?\$" || true)"
   [[ -z "$unexpected" ]] || die "unexpected files in $file: $unexpected"
   for f in README.md LICENSE CHANGELOG.md; do
     [[ -f "$dir/$name/$f" ]] || die "$f missing from $file"
