@@ -1,5 +1,8 @@
 # mmdr
 
+[![CI](https://github.com/berttoli/mmdr/actions/workflows/ci.yml/badge.svg)](https://github.com/berttoli/mmdr/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A tiny, local, drag-and-drop editor for the mermaid diagrams that live inside your markdown.
 
 ```bash
@@ -11,7 +14,7 @@ visual canvas (drag, connect, group, drop images, add text, link to other diagra
 code editor and a real mermaid preview. Each change is written straight back into the markdown block, so your
 architecture lives in the repo and changes show up as normal, reviewable diffs.
 
-- **One 1.6 MB binary, zero dependencies.** std-only Rust: HTTP server, file watcher and CLI. The UI and a gzipped
+- **One ~1.7 MB binary, zero dependencies.** std-only Rust: HTTP server, file watcher and CLI. The UI and a gzipped
   mermaid 11.17.2 are embedded, so it works offline and starts instantly.
 - **Markdown stays the source of truth.** Only the selected block is rewritten; prose, other blocks, line endings and
   indentation are untouched. Edit the file in vim/VS Code at the same time — mmdr reloads on change, and if both sides
@@ -19,13 +22,21 @@ architecture lives in the repo and changes show up as normal, reviewable diffs.
 - **Clean mermaid out.** Readable ids derived from labels (`Auth Service` → `authService`), one statement per line,
   stable ordering — so diffs are small and the output works anywhere mermaid does (GitHub, GitLab, Obsidian, docs sites).
 
+> **Status: 0.1, early.** Expect rough edges.
+> [Issues](https://github.com/berttoli/mmdr/issues) and ideas are welcome.
+
 ## Install
 
+Pre-built binaries for Linux, macOS and Windows are on the
+[releases page](https://github.com/berttoli/mmdr/releases): download, unpack, put `mmdr` on your `PATH`.
+
+With a Rust toolchain:
+
 ```bash
-cargo install --path .
+cargo install --git https://github.com/berttoli/mmdr
 ```
 
-or `cargo build --release` and put `target/release/mmdr` on your `PATH`.
+or clone and run `cargo install --path .`. Optional icon packs for L2 diagrams: `mmdr icons add logos devicon`.
 
 ## Use
 
@@ -125,14 +136,25 @@ semantic L1→L2 zoom, cloud import, presentation mode), is in
 
 ## Develop
 
+No dependencies to install beyond Rust (pinned in `rust-toolchain.toml`) and Node ≥ 22 for the JS tests.
+
 ```bash
-node --test tests/              # parser/serializer/markdown tests
-cargo test                      # CLI fence scanner tests
+cargo test                      # Rust unit tests (fence scanner, icon packs)
+npm test                        # parser / serializer / example round-trip tests (node --test, no npm deps)
+cargo build --release && tests/smoke.sh    # end-to-end: CLI commands + HTTP API of the real binary
 MMDR_WEB=web cargo run -- examples/architecture.md   # serve web/ from disk: edit JS/CSS, reload
 ./scripts/update-mermaid.sh 11.17.2                  # re-vendor mermaid
 ```
+
+CI runs all of the above (plus `cargo fmt --check` and `clippy -D warnings`) on Linux, macOS and Windows. Pushing a
+`v*` tag builds release binaries for five targets and publishes them with the matching `CHANGELOG.md` section.
 
 `web/model.js` is the heart: markdown block scanning plus a lossless mermaid-flowchart model (parse → edit →
 serialize, including frontmatter styles). `web/canvas.js` is the SVG editor, `web/app.js` the glue (outline, code pane,
 preview, inspector, autosave, sync, Labs), `web/flags.js` the feature-flag registry, `web/icons.js` the icon-pack store,
 `src/main.rs` the server/CLI and `src/icons.rs` icon-pack management.
+
+## License
+
+[MIT](LICENSE) © berttoli. The embedded mermaid bundle is MIT-licensed by the mermaid-js contributors; icon packs are
+downloaded separately under their own licenses (`logos`: CC0-1.0, `devicon`: MIT).

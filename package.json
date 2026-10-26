@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "mmdr-web",
+  "description": "Browser half of mmdr; no dependencies, only used to run the JS tests",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

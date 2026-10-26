@@ -35,12 +35,48 @@ struct Asset {
 const ASSETS: &[Asset] = &[
     Asset { path: "/", file: "index.html", mime: "text/html; charset=utf-8", body: include_bytes!("../web/index.html"), gzipped: false },
     Asset { path: "/app.css", file: "app.css", mime: "text/css; charset=utf-8", body: include_bytes!("../web/app.css"), gzipped: false },
-    Asset { path: "/app.js", file: "app.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/app.js"), gzipped: false },
-    Asset { path: "/canvas.js", file: "canvas.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/canvas.js"), gzipped: false },
-    Asset { path: "/flags.js", file: "flags.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/flags.js"), gzipped: false },
-    Asset { path: "/icons.js", file: "icons.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/icons.js"), gzipped: false },
-    Asset { path: "/model.js", file: "model.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/model.js"), gzipped: false },
-    Asset { path: "/vendor/mermaid.min.js", file: "vendor/mermaid.min.js.gz", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/vendor/mermaid.min.js.gz"), gzipped: true },
+    Asset {
+        path: "/app.js",
+        file: "app.js",
+        mime: "text/javascript; charset=utf-8",
+        body: include_bytes!("../web/app.js"),
+        gzipped: false,
+    },
+    Asset {
+        path: "/canvas.js",
+        file: "canvas.js",
+        mime: "text/javascript; charset=utf-8",
+        body: include_bytes!("../web/canvas.js"),
+        gzipped: false,
+    },
+    Asset {
+        path: "/flags.js",
+        file: "flags.js",
+        mime: "text/javascript; charset=utf-8",
+        body: include_bytes!("../web/flags.js"),
+        gzipped: false,
+    },
+    Asset {
+        path: "/icons.js",
+        file: "icons.js",
+        mime: "text/javascript; charset=utf-8",
+        body: include_bytes!("../web/icons.js"),
+        gzipped: false,
+    },
+    Asset {
+        path: "/model.js",
+        file: "model.js",
+        mime: "text/javascript; charset=utf-8",
+        body: include_bytes!("../web/model.js"),
+        gzipped: false,
+    },
+    Asset {
+        path: "/vendor/mermaid.min.js",
+        file: "vendor/mermaid.min.js.gz",
+        mime: "text/javascript; charset=utf-8",
+        body: include_bytes!("../web/vendor/mermaid.min.js.gz"),
+        gzipped: true,
+    },
 ];
 
 struct Opts {
@@ -485,7 +521,12 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
             let v = version_of(&full);
             st.watched.lock().unwrap().insert(rel.clone(), v.clone());
             let origin = req.headers.get("x-client").cloned().unwrap_or_default();
-            st.publish(format!(r#"{{"type":"change","path":{},"version":{},"origin":{}}}"#, json_str(&rel), json_str(&v), json_str(&origin)));
+            st.publish(format!(
+                r#"{{"type":"change","path":{},"version":{},"origin":{}}}"#,
+                json_str(&rel),
+                json_str(&v),
+                json_str(&origin)
+            ));
             respond(s, "200 OK", "text/plain", &[("X-Version", v)], b"ok")
         }
         ("GET", "/api/config") => {
@@ -533,7 +574,9 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
 
 fn events(s: &mut TcpStream, st: &State) -> io::Result<()> {
     let mut last = st.hub.lock().unwrap().seq;
-    s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: keep-alive\r\n\r\nretry: 1000\n\n")?;
+    s.write_all(
+        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: keep-alive\r\n\r\nretry: 1000\n\n",
+    )?;
     s.flush()?;
     loop {
         let batch: Vec<String> = {
@@ -701,10 +744,13 @@ fn json_str(s: &str) -> String {
 }
 
 fn parse_query(qs: &str) -> HashMap<String, String> {
-    qs.split('&').filter(|p| !p.is_empty()).map(|p| {
-        let (k, v) = p.split_once('=').unwrap_or((p, ""));
-        (url_decode(k), url_decode(v))
-    }).collect()
+    qs.split('&')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let (k, v) = p.split_once('=').unwrap_or((p, ""));
+            (url_decode(k), url_decode(v))
+        })
+        .collect()
 }
 
 fn url_decode(s: &str) -> String {
@@ -730,8 +776,10 @@ fn url_decode(s: &str) -> String {
 }
 
 fn url_encode(s: &str) -> String {
-    s.bytes().map(|b| match b {
-        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => (b as char).to_string(),
-        _ => format!("%{b:02X}"),
-    }).collect()
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
