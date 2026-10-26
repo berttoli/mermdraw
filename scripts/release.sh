@@ -2,7 +2,8 @@
 # Release helpers used by .github/workflows/release.yml; they run the same way locally.
 #
 #   scripts/release.sh cargo-version          print the version in Cargo.toml
-#   scripts/release.sh check TAG              validate TAG (vX.Y.Z or vX.Y.Z-rc.N) against Cargo.toml,
+#   scripts/release.sh check TAG              validate TAG (vX.Y.Z or vX.Y.Z-rc.N) against Cargo.toml (must
+#                                             match exactly, so rc builds report their rc version),
 #                                             Cargo.lock and CHANGELOG.md; print version=/prerelease=
 #   scripts/release.sh notes VERSION          print the CHANGELOG.md section for VERSION
 #   scripts/release.sh package TARGET BIN OUT write OUT/mmdr-TARGET.tar.gz (.zip for Windows)
@@ -32,9 +33,8 @@ cmd_check() {
   local cargo lock
   cargo="$(cargo_version)"
   lock="$(lock_version)"
-  # vX.Y.Z needs Cargo.toml X.Y.Z; a release candidate may also be cut from X.Y.Z or X.Y.Z-rc.N
-  [[ "$cargo" == "$version" || (-n "$pre" && "$cargo" == "$base") ]] ||
-    die "Cargo.toml says $cargo but the tag is $tag"
+  # exact match: `mmdr --version` of a v0.2.0-rc.1 build must say 0.2.0-rc.1
+  [[ "$cargo" == "$version" ]] || die "Cargo.toml says $cargo but the tag is $tag (set version = \"$version\")"
   [[ "$lock" == "$cargo" ]] || die "Cargo.lock says $lock but Cargo.toml says $cargo (run cargo build)"
   grep -Eq "^## ${base//./\\.}( |\$)" "$ROOT/CHANGELOG.md" || die "CHANGELOG.md has no '## $base' section"
   local prerelease=false

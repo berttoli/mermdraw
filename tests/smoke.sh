@@ -46,6 +46,16 @@ expect "ls lists diagrams" "$("$BIN" ls "$WORK/docs/architecture.md")" "3 diagra
 expect "cat prints a block" "$("$BIN" cat "$WORK/docs/architecture.md" 2)" "sequenceDiagram"
 "$BIN" new "$WORK/docs/new.md" -t er --title "Data model" >/dev/null
 expect "new creates a file with a diagram" "$("$BIN" ls "$WORK/docs/new.md")" "erDiagram"
+expect "new creates missing folders" "$("$BIN" new "$WORK/fresh/docs/architecture.md" --title Overview)" "created"
+expect "the new file lists its diagram" "$("$BIN" ls "$WORK/fresh/docs/architecture.md")" "Overview"
+expect "new creates .mmd files" "$("$BIN" new "$WORK/fresh/flows/login.mmd" -t sequence)" "created"
+if "$BIN" new "$WORK/fresh/flows/login.mmd" >/dev/null 2>&1; then fail "a second diagram was added to a .mmd file"; fi
+pass "new refuses a second diagram in a .mmd file"
+printf '# notes\n\377\376\n' >"$WORK/binary.md"
+cp "$WORK/binary.md" "$WORK/binary.expected"
+if "$BIN" new "$WORK/binary.md" >/dev/null 2>&1; then fail "new wrote into a file it could not read as text"; fi
+cmp -s "$WORK/binary.md" "$WORK/binary.expected" || fail "new modified a file it could not read"
+pass "new leaves unreadable files untouched"
 expect "icons ls with an empty cache" "$("$BIN" icons ls)" "no icon packs installed"
 mkdir -p "$WORK/docs/.mmdr/icons"
 printf '{"prefix":"demo","icons":{"dot":{"body":"<circle r=\\"4\\"/>"}}}' >"$WORK/docs/.mmdr/icons/demo.json"

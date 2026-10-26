@@ -86,6 +86,10 @@ curl -fsSL "https://github.com/berttoli/mmdr/releases/latest/download/mmdr-$targ
 sudo mv "mmdr-$target/mmdr" /usr/local/bin/
 ```
 
+`latest` skips pre-releases. To try a release candidate, put its tag in the URL instead, e.g.
+`https://github.com/berttoli/mmdr/releases/download/v0.1.0-rc.2/mmdr-$target.tar.gz`, or grab it from the
+[releases page](https://github.com/berttoli/mmdr/releases); `mmdr --version` tells you which build you have.
+
 On Windows, download `mmdr-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
 signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mmdr`). If macOS refuses to open a
 binary downloaded in a browser, run `xattr -d com.apple.quarantine mmdr`.

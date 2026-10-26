@@ -85,12 +85,13 @@ scripts/release.sh verify dist/mmdr-aarch64-apple-darwin.tar.gz
 1. **Prepare on `main`.**
    - In `CHANGELOG.md`, rename `## Unreleased` to `## X.Y.Z — YYYY-MM-DD`. For the first release, fold the
      `Unreleased` items into the existing `0.1.0` section and update its date.
-   - Set `version = "X.Y.Z"` in `Cargo.toml` and run `cargo build` so `Cargo.lock` follows.
+   - Set `version = "X.Y.Z-rc.1"` in `Cargo.toml` and run `cargo build` so `Cargo.lock` follows. The tag must match
+     `Cargo.toml` exactly, so every build reports the version it really is (`mmdr --version` → `mmdr X.Y.Z-rc.1`).
    - Check, commit, push, and wait for CI to go green:
 
      ```bash
-     scripts/release.sh check vX.Y.Z
-     git commit -am "Release vX.Y.Z" && git push origin main
+     scripts/release.sh check vX.Y.Z-rc.1
+     git commit -am "Prepare vX.Y.Z-rc.1" && git push origin main
      ```
 
 2. **Release candidate.** Tag and push it (`git tag -a` if you haven't set up signing):
@@ -101,11 +102,13 @@ scripts/release.sh verify dist/mmdr-aarch64-apple-darwin.tar.gz
    ```
 
    This produces a draft **pre-release**. Download the assets, try them on a couple of machines, then either publish the
-   draft for testers (`gh release edit vX.Y.Z-rc.1 --draft=false`) or delete it.
+   draft for testers (`gh release edit vX.Y.Z-rc.1 --draft=false`) or delete it. If the rc needs fixes, land them on
+   `main`, bump to `X.Y.Z-rc.2` and repeat.
 
-3. **Stable.** Tag the same commit:
+3. **Stable.** Set `version = "X.Y.Z"`, run `cargo build`, commit "Release vX.Y.Z", push, then tag that commit:
 
    ```bash
+   scripts/release.sh check vX.Y.Z
    git tag -s vX.Y.Z -m "mmdr X.Y.Z"
    git push origin vX.Y.Z
    ```

@@ -199,10 +199,17 @@ fn cmd_cat(args: &[String]) {
 fn cmd_new(args: &[String], opts: &Opts) {
     let path = args.first().unwrap_or_else(|| die("usage: mmdr new FILE [-t TYPE] [--title TITLE]"));
     let tpl = md::template(&opts.kind).unwrap_or_else(|| die(&format!("unknown diagram type '{}'", opts.kind)));
-    let existing = fs::read_to_string(path).unwrap_or_default();
+    // Only a missing file counts as empty; any other read error must not lead to overwriting it.
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => die(&format!("{path}: {e}")),
+    };
+    let created = existing.is_none();
+    let existing = existing.unwrap_or_default();
     let count = md::blocks(&existing, md::is_mmd(path)).len();
     let text = if md::is_mmd(path) {
-        if count > 0 {
+        if !existing.trim().is_empty() {
             die(".mmd files hold a single diagram");
         }
         tpl.to_string()
@@ -210,8 +217,14 @@ fn cmd_new(args: &[String], opts: &Opts) {
         let stem = Path::new(path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         md::append_block(&existing, &stem, opts.title.as_deref(), tpl)
     };
+    create_parent(Path::new(path));
     write_atomic(Path::new(path), text.as_bytes()).unwrap_or_else(|e| die(&format!("{path}: {e}")));
-    println!("added {} diagram #{} to {path}", opts.kind, count + 1);
+    if created {
+        println!("created {path} with a {} diagram", opts.kind);
+    } else {
+        let n = if md::is_mmd(path) { 1 } else { count + 1 };
+        println!("added {} diagram #{n} to {path}", opts.kind);
+    }
 }
 
 fn cmd_icons(args: &[String], opts: &Opts) {
@@ -291,9 +304,7 @@ fn serve(target: Option<&str>, opts: &Opts) {
         if !(md::is_md(&name) || md::is_mmd(&name)) {
             die(&format!("{name} does not exist"));
         }
-        if let Some(dir) = target.parent().filter(|d| !d.as_os_str().is_empty()) {
-            fs::create_dir_all(dir).unwrap_or_else(|e| die(&format!("{}: {e}", dir.display())));
-        }
+        create_parent(&target);
         let stem = target.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         let tpl = md::template("flowchart").unwrap();
         let text = if md::is_mmd(&name) { tpl.to_string() } else { md::append_block("", &stem, Some("Overview"), tpl) };
@@ -340,6 +351,13 @@ fn serve(target: Option<&str>, opts: &Opts) {
         thread::spawn(move || {
             let _ = handle(stream, &st);
         });
+    }
+}
+
+/// Creates the folders a new document will live in (`docs/` in `mmdr new docs/arch.md`).
+fn create_parent(path: &Path) {
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        fs::create_dir_all(dir).unwrap_or_else(|e| die(&format!("{}: {e}", dir.display())));
     }
 }
 
