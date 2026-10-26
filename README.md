@@ -76,8 +76,21 @@ mmdr docs/architecture.md        # opens the editor in your browser
 
 ## Install
 
-Download a binary for Linux, macOS or Windows from the [releases page](https://github.com/berttoli/mmdr/releases),
-unpack it and put `mmdr` on your `PATH`. Or build it with Rust:
+Download a binary from the [releases page](https://github.com/berttoli/mmdr/releases). The Linux builds are static
+and run on any distro. Asset names don't change between versions, so this always fetches the latest stable release:
+
+```bash
+# pick yours: aarch64-apple-darwin, x86_64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+target=aarch64-apple-darwin
+curl -fsSL "https://github.com/berttoli/mmdr/releases/latest/download/mmdr-$target.tar.gz" | tar xz
+sudo mv "mmdr-$target/mmdr" /usr/local/bin/
+```
+
+On Windows, download `mmdr-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
+signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mmdr`). If macOS refuses to open a
+binary downloaded in a browser, run `xattr -d com.apple.quarantine mmdr`.
+
+Or build it with Rust:
 
 ```bash
 cargo install --git https://github.com/berttoli/mmdr
@@ -291,8 +304,9 @@ node scripts/screenshots.mjs                # regenerate the README images with 
 ./scripts/update-mermaid.sh 11.17.2         # re-vendor mermaid
 ```
 
-CI runs all of the tests (plus `cargo fmt --check` and `clippy -D warnings`) on Linux, macOS and Windows. Pushing a
-`v*` tag builds release binaries for five targets and publishes them with the matching `CHANGELOG.md` section.
+CI runs all of the tests (plus `cargo fmt --check`, `clippy -D warnings` and shellcheck) on Linux, macOS and Windows,
+and packages and verifies the static Linux binary on every push. Releases are cut by pushing a tag. The pipeline builds,
+verifies and attests binaries for five targets and opens a draft release; see [docs/RELEASING.md](docs/RELEASING.md).
 
 `web/model.js` is the heart: markdown block scanning plus a lossless mermaid-flowchart model (parse → edit →
 serialize, including frontmatter styles). `web/canvas.js` is the SVG editor, `web/app.js` the glue (outline, code

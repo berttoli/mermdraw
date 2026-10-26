@@ -5,12 +5,14 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # release.yml runs the whole suite on the tagged commit before building binaries
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -25,10 +27,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Toolchain (from rust-toolchain.toml)
         run: rustup toolchain install && rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --check
@@ -50,11 +52,27 @@ jobs:
       matrix:
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
       - name: Parser, serializer and example tests
         run: node --test tests/*.test.mjs
       - name: Syntax-check browser modules
         run: for f in web/*.js; do node --check "$f"; done
+
+  package:
+    name: Package · static Linux binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustup target add x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Lint release and test scripts
+        run: shellcheck scripts/*.sh tests/*.sh
+      - name: Build, package and verify the release archive
+        run: |
+          cargo build --release --locked --target x86_64-unknown-linux-musl
+          scripts/release.sh package x86_64-unknown-linux-musl target/x86_64-unknown-linux-musl/release/mmdr dist
+          scripts/release.sh verify dist/mmdr-x86_64-unknown-linux-musl.tar.gz

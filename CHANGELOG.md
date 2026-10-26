@@ -8,6 +8,13 @@
 - Canvas saves are stable from the first save when top-level nodes are declared after subgraphs.
 - The IT-org digital-products L2 ships with a hand-arranged canvas layout.
 - CI: the JS tests run on Node 22 and 24 (`node --test tests/*.test.mjs`).
+- Release pipeline: static (musl) Linux binaries for x86_64 and arm64; the full CI runs on the tagged commit;
+  the tag is checked against `Cargo.toml`, `Cargo.lock` and this changelog; every archive is smoke-tested on its own
+  OS; checksums and signed build-provenance attestations; draft releases (pre-releases for `-rc` tags) and
+  version-free asset names. Manual runs are dry runs.
+- `scripts/release.sh` runs the release steps locally; `docs/RELEASING.md` is the runbook.
+- CI packages and verifies the static Linux binary on every push, lints the shell scripts, and pins actions to commit
+  SHAs (bumped weekly by Dependabot).
 
 ## 0.1.0 — 2026-10-26
 

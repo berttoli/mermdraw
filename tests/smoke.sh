@@ -56,7 +56,7 @@ pass "icons add rejects bad pack names"
 
 # ---------------------------------------------------------------- server
 "$BIN" "$WORK/docs" --no-open --port "$PORT" --enable themes --disable icons >"$WORK/server.log" 2>&1 &
-PIDS+=($!)
+PIDS+=("$!")
 for _ in $(seq 1 100); do
   curl -fs "$U/api/info" >/dev/null 2>&1 && break
   sleep 0.1
@@ -101,7 +101,7 @@ pass "writes markdown files only"
 
 # live change events for edits made outside mmdr
 curl -sN --max-time 6 "$U/api/events" >"$WORK/events.log" &
-PIDS+=($!)
+PIDS+=("$!")
 curl -fs "$U/api/file?path=architecture.md" >/dev/null # opening a file starts watching it
 sleep 0.5
 echo "<!-- edited elsewhere -->" >>"$WORK/docs/architecture.md"
