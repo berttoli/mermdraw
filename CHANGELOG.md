@@ -31,7 +31,6 @@ installs an `mmdr` binary. If you tried an rc, move `.mmdr/` to `.mermdraw/` and
 - Examples: a full IT organization with an L1 org chart and landscape plus four L2 drill-downs, one of them with a
   hand-arranged canvas layout.
 - Pre-built binaries for Linux (static, x86_64 and arm64), macOS (Apple silicon and Intel) and Windows x64, each
-  tested on its own OS before release, with SHA-256 checksums and signed build-provenance attestations. Release
-  candidates report their own version in `mermdraw --version`.
+  tested on its own OS before release, with SHA-256 checksums and signed build-provenance attestations.
 - Docs: a README with screenshots and examples, research notes on Lucidchart and Miro with a feature-flag roadmap, and
   `docs/RELEASING.md` for maintainers.

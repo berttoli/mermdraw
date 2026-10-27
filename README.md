@@ -92,9 +92,9 @@ curl -fsSL "https://github.com/berttoli/mermdraw/releases/latest/download/mermdr
 sudo mv "mermdraw-$target/mermdraw" /usr/local/bin/
 ```
 
-`latest` skips pre-releases. To try a release candidate, put its tag in the URL instead, e.g.
-`https://github.com/berttoli/mermdraw/releases/download/v0.1.0-rc.4/mermdraw-$target.tar.gz`, or grab it from the
-[releases page](https://github.com/berttoli/mermdraw/releases); `mermdraw --version` tells you which build you have.
+For a specific version, use `download/<tag>` instead of `latest/download`, e.g.
+`https://github.com/berttoli/mermdraw/releases/download/v0.1.0/mermdraw-$target.tar.gz`; `mermdraw --version` tells
+you which build you have. Release candidates are published as pre-releases, which `latest` skips.
 
 On Windows, download `mermdraw-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
 signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mermdraw`). If macOS refuses to open a
