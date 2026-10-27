@@ -62,7 +62,8 @@ async function init() {
   applyTheme(store.get('theme', 'auto'));
   canvas = new Canvas($('#canvas'), {
     change: commitFromCanvas,
-    select: () => renderInspector(),
+    select: () => (renderInspector(), refreshSelTools()),
+    render: () => placeSelTools(),
     upload: uploadImage,
     asset: assetUrl,
     openLink: followLink,
@@ -199,12 +200,14 @@ function loadSource(src, { fit = false, fromCode = false, keep = false } = {}) {
         if (placed >= m.nodes.length * 0.8) for (const [id, p] of Object.entries(pos)) if (M.getNode(m, id)) m.layout[id] = p;
         canvas.setModel(m, { fit: true });
         renderInspector(true);
+        refreshSelTools();
       });
     } else canvas.setModel(m, { fit });
   }
   updateCodeInfo();
   schedulePreview();
   renderInspector(true);
+  refreshSelTools();
 }
 
 function commitFromCanvas(kind) {
@@ -217,6 +220,7 @@ function commitFromCanvas(kind) {
   schedulePreview();
   updateCodeInfo();
   renderInspector();
+  refreshSelTools();
 }
 
 function applyToDoc() {
@@ -253,6 +257,7 @@ function setView(v) {
     }
     if (eff === 'preview' || eff === 'split') schedulePreview();
   }
+  if (canvas) placeSelTools();
 }
 let docDirty = false;
 
@@ -593,6 +598,239 @@ async function autoLayout() {
   toast(fallback ? 'Laid out (built-in)' : 'Laid out like mermaid renders it');
 }
 
+// ------------------------------------------------------------------ selection toolbar
+
+/** Miro-style quick actions floating over the selection; the inspector keeps everything else. */
+const SWATCHES = {
+  fill: ['#FFFFFF', '#F1F3F5', '#FFF3BF', '#FFE8CC', '#FFE3E3', '#FCE4EC', '#EDE7FF', '#E7F0FF', '#E3FAFC', '#E6F7EC'],
+  line: ['#1F2937', '#6B7280', '#E03131', '#F76707', '#F59F00', '#2F9E44', '#0C8599', '#1C7ED6', '#7048E8', '#D6336C'],
+};
+const st = (body) => `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">${body}</svg>`;
+const ST_ICON = {
+  swap: st('<path d="M4 7h11m-3-3 3 3-3 3M16 13H5m3-3-3 3 3 3"/>'),
+  label: st('<path d="M3 5h9M7.5 5v11M13 12h5m-2.5-2.5v5"/>'),
+  rename: st('<path d="M4 5h12M10 5v11"/>'),
+  trash: st('<path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10"/>'),
+  more: st('<circle cx="5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15" cy="10" r="1.2"/>'),
+  connect: st('<rect x="2.5" y="6.5" width="7" height="7" rx="1.5"/><path d="M9.5 10h7m-2.5-2.5L16.5 10 14 12.5"/>'),
+  link: st('<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>'),
+  group: st('<rect x="2.5" y="3.5" width="15" height="13" rx="2" stroke-dasharray="3 2"/><rect x="6" y="7.5" width="8" height="5" rx="1"/>'),
+  ungroup: st('<rect x="2.5" y="3.5" width="15" height="13" rx="2" stroke-dasharray="3 2"/><path d="M7 10h6"/>'),
+  dup: st('<rect x="6.5" y="6.5" width="10" height="10" rx="2"/><path d="M4 13.5V5a1.5 1.5 0 0 1 1.5-1.5H13"/>'),
+  alignX: st('<path d="M10 2v16"/><rect x="5" y="4.5" width="10" height="4" rx="1"/><rect x="7" y="11.5" width="6" height="4" rx="1"/>'),
+  alignY: st('<path d="M2 10h16"/><rect x="4.5" y="5" width="4" height="10" rx="1"/><rect x="11.5" y="7" width="4" height="6" rx="1"/>'),
+};
+const CAPS = [['', 'None'], ['>', 'Arrow'], ['o', 'Circle'], ['x', 'Cross']];
+const STROKES = [['normal', 'Solid'], ['thick', 'Thick'], ['dotted', 'Dotted'], ['invisible', 'Hidden (layout only)']];
+const EDGE_CURVES = [['', 'Diagram default'], ['basis', 'Curved'], ['linear', 'Straight'], ['step', 'Elbow']];
+const GROUP_DIRS = [['', 'Inherit'], ['TB', '↓ Top to bottom'], ['LR', '→ Left to right'], ['BT', '↑ Bottom to top'], ['RL', '← Right to left']];
+
+/** A line with an end cap at the left (`side` 'start') or right end. */
+function capIcon(cap, side) {
+  const x = side === 'start' ? 4 : 16;
+  const s = side === 'start' ? 1 : -1;
+  const head = cap === '>' || cap === '<' ? `<path d="M${x + 5 * s} 6.5 ${x} 10l${5 * s} 3.5" />`
+    : cap === 'o' ? `<circle cx="${x + 2.5 * s}" cy="10" r="2.5"/>`
+    : cap === 'x' ? `<path d="M${x} 7.5l4 5m0-5-4 5" transform="translate(${s < 0 ? -4 : 0} 0)"/>` : '';
+  return st(`<path d="M3 10h14"/>${head}`);
+}
+const strokeIcon = (s) => st(s === 'invisible' ? '<path d="M3 10h14" stroke-dasharray="1.5 3.5" opacity=".55"/>'
+  : `<path d="M3 10h14" stroke-width="${s === 'thick' ? 3.4 : 1.6}"${s === 'dotted' ? ' stroke-dasharray="2 3"' : ''}/>`);
+const curveIcon = (c) => st(c === 'linear' ? '<path d="M3 15 17 5"/>' : c?.startsWith('step') ? '<path d="M3 15h7V5h7"/>' : '<path d="M3 15c6 0 8-10 14-10"/>');
+const dot = (c) => `<i class="st-dot${c ? '' : ' unset'}" style="${c ? `background:${esc(c)}` : ''}"></i>`;
+const shapeIcon = (shape) => `<svg class="shape-ic" viewBox="-17 -13 34 26" width="24" height="18" aria-hidden="true">${shapeMarkup(shape, shape === 'circle' ? 22 : 30, shape === 'circle' ? 22 : 19, '')}</svg>`;
+const tbtn = (act, icon, tip, extra = '') => `<button class="st-btn${extra}" data-st="${act}" data-tip="${esc(tip)}" data-tip-side="top" aria-label="${esc(tip)}">${icon}</button>`;
+const SEP = '<span class="st-sep" aria-hidden="true"></span>';
+
+/** Rebuilds the toolbar for the current selection (after selection or model changes). */
+function refreshSelTools() {
+  const el = $('#seltools');
+  const m = S.model;
+  const sel = canvas?.selection;
+  closeStMenu();
+  const nodes = m && sel ? sel.nodes.filter((id) => M.getNode(m, id)) : [];
+  const edges = m && sel ? sel.edges.filter((i) => m.edges[i]) : [];
+  const groups = m && sel ? sel.groups.filter((id) => M.getGroup(m, id)) : [];
+  const total = nodes.length + edges.length + groups.length;
+  let html = '';
+  if (total === 1 && edges.length) {
+    const e = m.edges[edges[0]];
+    const css = M.parseCss(e.style);
+    const cap = (c, side) => (c ? capIcon(c, side) : '<b class="st-txt">None</b>');
+    html = tbtn('start', cap(e.start, 'start'), 'Start of line') + tbtn('swap', ST_ICON.swap, 'Swap direction') + tbtn('end', cap(e.end, 'end'), 'End of line')
+      + SEP + tbtn('stroke', strokeIcon(e.stroke), 'Line style') + tbtn('curve', curveIcon(canvas.curveOf(e)), 'Line shape') + tbtn('color', dot(toHex(css.get('stroke'))), 'Line color')
+      + SEP + tbtn('label', ST_ICON.label, e.label ? 'Edit label' : 'Add label') + SEP + tbtn('delete', ST_ICON.trash, 'Delete line', ' danger');
+  } else if (total === 1 && nodes.length) {
+    const n = M.getNode(m, nodes[0]);
+    const css = M.parseCss(m.styles[n.id]);
+    const special = n.shape === 'icon' || n.shape === 'image' || n.shape === 'text';
+    html = (special ? '' : tbtn('shape', shapeIcon(n.shape), 'Shape') + tbtn('fill', dot(toHex(css.get('fill'))), 'Fill') + tbtn('border', dot(toHex(css.get('stroke'))), 'Border') + SEP)
+      + tbtn('label', ST_ICON.rename, 'Edit label') + tbtn('connect', ST_ICON.connect, 'Add connected node · Tab') + tbtn('link', ST_ICON.link, m.links[n.id]?.url ? 'Edit link' : 'Link to a page or diagram')
+      + SEP + tbtn('delete', ST_ICON.trash, 'Delete', ' danger');
+  } else if (total === 1 && groups.length) {
+    const g = M.getGroup(m, groups[0]);
+    const css = M.parseCss(m.styles[g.id]);
+    html = tbtn('rename', ST_ICON.rename, 'Rename group') + tbtn('dir', `<b class="st-txt">${g.dir || 'Auto'}</b>`, 'Direction inside the group')
+      + (g.implicit ? '' : tbtn('fill', dot(toHex(css.get('fill'))), 'Fill')) + SEP + tbtn('ungroup', ST_ICON.ungroup, 'Ungroup · ⇧⌘G');
+  } else if (total > 1) {
+    html = (nodes.length > 1 ? tbtn('align-x', ST_ICON.alignX, 'Line up vertically') + tbtn('align-y', ST_ICON.alignY, 'Line up horizontally') + SEP : '')
+      + tbtn('group', ST_ICON.group, 'Group · ⌘G') + (nodes.length ? tbtn('fill', dot(''), 'Fill') : '')
+      + SEP + tbtn('dup', ST_ICON.dup, 'Duplicate · ⌘D') + tbtn('delete', ST_ICON.trash, 'Delete', ' danger');
+  }
+  if (!html) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = html + SEP + tbtn('more', ST_ICON.more, 'More in the inspector');
+  placeSelTools();
+}
+
+/** Shows the toolbar above the selection (below it near the top edge), hidden while dragging or editing. */
+function placeSelTools() {
+  const el = $('#seltools');
+  const busy = !el.innerHTML || canvas.editor || canvas.drag?.moved || !/view-(canvas|split)/.test($('#stage').className);
+  const r = !busy && canvas.selectionRect();
+  el.hidden = !r;
+  if (!r) return closeStMenu();
+  const wrap = $('#canvas-wrap').getBoundingClientRect();
+  const minX = ($('#palette').hidden ? 0 : $('#palette').offsetLeft + $('#palette').offsetWidth) + 8;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  let x = (r.left + r.right) / 2 - w / 2 - wrap.left;
+  let y = r.top - h - 14 - wrap.top;
+  if (y < 8) y = r.bottom + 14 - wrap.top;
+  x = Math.max(minX, Math.min(wrap.width - w - 8, x));
+  y = Math.max(8, Math.min(wrap.height - h - 8, y));
+  el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+}
+
+function closeStMenu() {
+  const pop = $('#st-pop');
+  if (pop.hidden) return;
+  pop.hidden = true;
+  $$('#seltools [aria-expanded]').forEach((b) => b.removeAttribute('aria-expanded'));
+}
+
+/** Opens a popover under toolbar button `btn` with `html`; `onPick(value)` gets clicks on [data-v]. */
+function openStMenu(btn, html, onPick) {
+  const pop = $('#st-pop');
+  const reopen = !pop.hidden && btn.getAttribute('aria-expanded');
+  closeStMenu();
+  if (reopen) return;
+  pop.innerHTML = html;
+  pop.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  const r = btn.getBoundingClientRect();
+  const tb = $('#seltools').getBoundingClientRect();
+  const below = tb.bottom + 6 + pop.offsetHeight < innerHeight;
+  pop.style.left = `${Math.max(8, Math.min(innerWidth - pop.offsetWidth - 8, r.left))}px`;
+  pop.style.top = `${below ? tb.bottom + 6 : tb.top - 6 - pop.offsetHeight}px`;
+  pop.onclick = (ev) => {
+    const b = ev.target.closest('[data-v]');
+    if (!b) return;
+    closeStMenu();
+    onPick(b.dataset.v);
+  };
+}
+
+const menuList = (items, cur, icon = () => '') => items.map(([v, l]) => `<button class="mi${v === cur ? ' on' : ''}" data-v="${esc(v)}">${icon(v)}<span>${esc(l)}</span></button>`).join('');
+const swatchGrid = (colors, cur) => `<div class="sw-grid">${colors.map((c) => `<button class="sw-btn${c.toLowerCase() === (cur || '').toLowerCase() ? ' on' : ''}" data-v="${c}" style="background:${c}" data-tip="${c}" aria-label="${c}"></button>`).join('')}</div>
+  <button class="mi" data-v=""><i class="st-dot unset"></i><span>Default</span></button><label class="mi"><input type="color" class="st-custom" value="${cur || '#ffffff'}"><span>Custom…</span></label>`;
+
+/** Opens a color popover; `apply(hex | '')` sets it. */
+function openColors(btn, palette, cur, apply) {
+  openStMenu(btn, swatchGrid(palette, cur), apply);
+  const custom = $('#st-pop .st-custom');
+  custom.addEventListener('input', () => apply(custom.value));
+}
+
+/** Runs a toolbar change: commit, refresh the inspector and the toolbar, keep keyboard focus on the canvas. */
+function stCommit() {
+  commitNow();
+  renderInspector(true);
+  refreshSelTools();
+  canvas.root.focus({ preventScroll: true });
+}
+
+function onSelTool(btn) {
+  const m = S.model;
+  const sel = canvas.selection;
+  const act = btn.dataset.st;
+  const e = sel.edges.length === 1 ? m.edges[sel.edges[0]] : null;
+  const n = sel.nodes.length === 1 ? M.getNode(m, sel.nodes[0]) : null;
+  const g = sel.groups.length === 1 ? M.getGroup(m, sel.groups[0]) : null;
+  const styleOf = (id) => M.parseCss(m.styles[id]);
+  const restyle = (id, key, v) => {
+    const css = styleOf(id);
+    if (v) css.set(key, v);
+    else css.delete(key);
+    setStyle(id, M.cssString(css));
+  };
+  switch (act) {
+    case 'start':
+      return openStMenu(btn, menuList(CAPS, e.start === '<' ? '>' : e.start, (v) => capIcon(v, 'start')), (v) => ((e.start = v === '>' ? '<' : v), stCommit()));
+    case 'end':
+      return openStMenu(btn, menuList(CAPS, e.end, (v) => capIcon(v, 'end')), (v) => ((e.end = v), stCommit()));
+    case 'swap':
+      [e.from, e.to] = [e.to, e.from];
+      return stCommit();
+    case 'stroke':
+      return openStMenu(btn, menuList(STROKES, e.stroke, strokeIcon), (v) => ((e.stroke = v), stCommit()));
+    case 'curve':
+      return openStMenu(btn, menuList(EDGE_CURVES, e.props?.curve || '', (v) => curveIcon(v || canvas.curve)), (v) => (M.setEdgeProp(m, e, 'curve', v), stCommit()));
+    case 'color': {
+      const css = M.parseCss(e.style);
+      return openColors(btn, SWATCHES.line, toHex(css.get('stroke')), (v) => {
+        if (v) css.set('stroke', v);
+        else css.delete('stroke');
+        e.style = M.cssString(css);
+        stCommit();
+      });
+    }
+    case 'shape':
+      return openStMenu(btn, `<div class="shape-grid">${M.SHAPES.filter(([s]) => !['image', 'icon', 'text'].includes(s)).map(([s, l]) => `<button class="shp${s === n.shape ? ' on' : ''}" data-v="${s}" data-tip="${esc(l)}" aria-label="${esc(l)}">${shapeIcon(s)}</button>`).join('')}</div>`, (v) => (setShape(n, v), stCommit()));
+    case 'fill':
+      if (n || g) {
+        const id = (n || g).id;
+        return openColors(btn, SWATCHES.fill, toHex(styleOf(id).get('fill')), (v) => (restyle(id, 'fill', v), stCommit()));
+      }
+      return openColors(btn, SWATCHES.fill, '', (v) => {
+        for (const id of sel.nodes) restyle(id, 'fill', v);
+        stCommit();
+      });
+    case 'border':
+      return openColors(btn, SWATCHES.line, toHex(styleOf(n.id).get('stroke')), (v) => (restyle(n.id, 'stroke', v), stCommit()));
+    case 'label':
+      closeStMenu();
+      return e ? canvas.editLabel('edge', sel.edges[0]) : canvas.editLabel('node', n.id);
+    case 'rename':
+      closeStMenu();
+      return canvas.editLabel('group', g.id);
+    case 'dir':
+      return openStMenu(btn, menuList(GROUP_DIRS, g.dir || ''), (v) => ((g.dir = v || null), stCommit()));
+    case 'connect':
+      return canvas.addConnected(n.id);
+    case 'link':
+    case 'more':
+      closeStMenu();
+      setPane('panel', true, true);
+      if (act === 'link') setTimeout(() => $('#inspector [data-k="url"]')?.focus(), 250);
+      return;
+    case 'ungroup':
+      return canvas.ungroupSelection();
+    case 'group':
+      return canvas.groupSelection();
+    case 'align-x':
+    case 'align-y':
+      return canvas.align(act.slice(-1));
+    case 'dup':
+      return canvas.duplicateSelection();
+    case 'delete':
+      return canvas.deleteSelection();
+  }
+}
+
 // ------------------------------------------------------------------ inspector
 
 let inspKey = '';
@@ -657,6 +895,16 @@ function bindColors(el, get, set) {
 function setStyle(id, css) {
   if (css) S.model.styles[id] = css;
   else delete S.model.styles[id];
+}
+
+/** Changes a node's shape, adding or dropping the image/icon properties that go with it. */
+function setShape(nd, shape) {
+  nd.shape = shape;
+  if (shape === 'image' && !nd.props.img) Object.assign(nd.props, { img: '', w: '64', h: '64' });
+  if (shape === 'icon' && !nd.props.icon) nd.props.icon = 'fa:cube';
+  if (shape !== 'image') for (const k of ['img', 'pos', 'w', 'h', 'constraint']) delete nd.props[k];
+  if (shape !== 'icon') for (const k of ['icon', 'form']) delete nd.props[k];
+  if (!M.BRACKETS[shape]) nd.at = true;
 }
 
 function shapeOptions(cur) {
@@ -743,13 +991,7 @@ function nodeInspector(el, n) {
     inspectCommit();
   });
   $('[data-k="shape"]', el).addEventListener('change', (e) => {
-    const nd = node();
-    nd.shape = e.target.value;
-    if (nd.shape === 'image' && !nd.props.img) Object.assign(nd.props, { img: '', w: '64', h: '64' });
-    if (nd.shape === 'icon' && !nd.props.icon) nd.props.icon = 'fa:cube';
-    if (nd.shape !== 'image') for (const k of ['img', 'pos', 'w', 'h', 'constraint']) delete nd.props[k];
-    if (nd.shape !== 'icon') for (const k of ['icon', 'form']) delete nd.props[k];
-    if (!M.BRACKETS[nd.shape]) nd.at = true;
+    setShape(node(), e.target.value);
     commitNow();
     renderInspector(true);
   });
@@ -1364,6 +1606,14 @@ function pickIcon(ref) {
 
 function bindUI() {
   $('#file').addEventListener('click', openFilePicker);
+  $('#seltools').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-st]');
+    if (b) onSelTool(b);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('#st-pop, #seltools')) closeStMenu();
+  });
+  window.addEventListener('pointerup', () => requestAnimationFrame(placeSelTools)); // after a pan or drag ends
   $('#file-q').addEventListener('input', () => {
     renderFileList();
     setFileActive(0);
@@ -1538,6 +1788,7 @@ function bindUI() {
     if (e.key === 'Escape') {
       $$('.modal').forEach((m) => (m.hidden = true));
       closeFilePicker(false);
+      closeStMenu();
     }
     if (typing(e.target)) return;
     if (mod && e.key === '[') {

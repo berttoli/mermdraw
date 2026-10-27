@@ -367,3 +367,46 @@ test('mermaid 11.17 architecture shapes round-trip', () => {
   assert.deepEqual(M.parseFlowchart(src).nodes.map((n) => n.shape), ['person', 'browser', 'console', 'folder', 'bucket']);
   assert.equal(roundTrip(src), src);
 });
+
+test('edge ids and their metadata (A e1@--> B, e1@{ curve: linear }) stay on the edge', () => {
+  const src = 'flowchart LR\n    A\n    B\n    C\n    A e1@--> B\n    B e2@-->|retry| C\n    e1@{ curve: linear }\n    e2@{ animate: true }';
+  const m = M.parseFlowchart(src);
+  assert.deepEqual(m.nodes.map((n) => n.id), ['A', 'B', 'C']);
+  assert.deepEqual(m.edges.map((e) => [e.id, e.props]), [['e1', { curve: 'linear' }], ['e2', { animate: 'true' }]]);
+  assert.equal(M.serializeFlowchart(m), src);
+  // metadata may come first; only the first edge of a fan-out gets the id
+  const fan = M.parseFlowchart('flowchart LR\n  e1@{ curve: step }\n  A & B e1@==> C');
+  assert.deepEqual(fan.edges.map((e) => [e.from, e.id ?? null, e.props ?? null]), [['A', 'e1', { curve: 'step' }], ['B', null, null]]);
+  assert.equal(fan.extras.length, 0);
+});
+
+test('an @ inside a label is not an edge id', () => {
+  const m = M.parseFlowchart('flowchart LR\n  admin["mail admin@x.org"] --> B\n  admin@{ shape: rounded }');
+  assert.equal(M.getNode(m, 'admin').shape, 'rounded');
+  assert.deepEqual(m.extras, []);
+});
+
+test('pasting a copy gives its edges fresh ids and their own metadata', () => {
+  const m = M.parseFlowchart('flowchart LR\n  A e1@--> B\n  e1@{ curve: linear }');
+  M.merge(m, M.extract(m, new Set(['A', 'B'])), 50, 0);
+  const ids = m.edges.map((e) => e.id);
+  assert.equal(new Set(ids).size, 2);
+  m.edges[1].props.curve = 'step';
+  assert.equal(m.edges[0].props.curve, 'linear');
+  assert.equal(M.uniqueId(m, 'e1') === 'e1', false);
+});
+
+test('setEdgeProp gives an edge an id for its own curve and drops it again', () => {
+  const m = M.parseFlowchart('flowchart LR\n  e1[One] --> B\n  A --> B');
+  const e = m.edges[1];
+  M.setEdgeProp(m, e, 'curve', 'linear');
+  assert.equal(e.id, 'e2'); // e1 is a node
+  assert.match(M.serializeFlowchart(m), /A e2@--> B\n {4}e2@\{ curve: linear \}/);
+  M.setEdgeProp(m, e, 'curve', '');
+  assert.equal(e.id, undefined);
+  assert.doesNotMatch(M.serializeFlowchart(m), /@/);
+  // an id the author wrote stays
+  const w = M.parseFlowchart('flowchart LR\n  A main@--> B\n  main@{ curve: step }');
+  M.setEdgeProp(w, w.edges[0], 'curve', '');
+  assert.match(M.serializeFlowchart(w), /A main@--> B$/);
+});

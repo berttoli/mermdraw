@@ -35,6 +35,9 @@ mermdraw docs/architecture.md        # opens the editor in your browser
   Press <kbd>Tab</kbd> while naming a node to chain the next one.
 - All 38 mermaid 11 shapes, plus free text, images (drop or paste one and it's saved to `assets/`) and product icons.
 - Subgraphs: <kbd>⌘G</kbd> to group, drag nodes into or out of a box, nest groups, set a direction per group.
+- A Miro-style toolbar floats over the selection: line ends, swap, line style, a per-line shape (curved, straight,
+  elbow) and color; node shape, fill and border; group direction and fill; align, group and duplicate.
+- Double-click a node, line or group to edit its label or title.
 - Inspector: rename ids (every reference follows), labels, shapes, links, colours (`style` / `linkStyle`), classes,
   and edge style (solid, thick, dotted, invisible, arrowheads, length).
 - Box-select, align and distribute, duplicate, copy as mermaid / paste mermaid, undo/redo, zoom, pan and fit.

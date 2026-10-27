@@ -60,6 +60,7 @@
         <div class="palette" id="palette"></div>
         <button class="back" id="back" hidden data-tip="Back" data-key="⌘[">←<span></span></button>
         <div id="canvas" class="canvas"></div>
+        <div class="seltools" id="seltools" role="toolbar" aria-label="Selection" hidden></div>
         <div class="zoom">
           <button data-z="out" data-tip="Zoom out" data-key="−" data-tip-side="top" aria-label="Zoom out">−</button>
           <button data-z="fit" id="zoom-label" data-tip="Fit to screen" data-key="0" data-tip-side="top">100%</button>
@@ -128,6 +129,7 @@
   <div class="file-list" id="file-list" role="listbox" aria-label="Markdown files"></div>
   <div class="file-foot"><span id="file-count"></span><span><kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>esc</kbd> close</span></div>
 </div>
+<div class="st-pop" id="st-pop" hidden></div>
 <div class="toast" id="toast" hidden></div>
 <div class="tip" id="tip" role="tooltip" hidden><span class="tip-text"></span><kbd></kbd></div>
 <div id="layout-host" aria-hidden="true"></div>

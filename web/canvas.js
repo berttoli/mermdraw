@@ -359,6 +359,12 @@ export class Canvas {
     });
   }
 
+  /** An edge's own curve (`A e1@--> B` with `e1@{ curve: linear }`), else the diagram's. */
+  curveOf(e) {
+    const c = e.props?.curve;
+    return typeof c === 'string' && /^\w+$/.test(c) ? c : this.curve;
+  }
+
   /** Mirrors the diagram's mermaid config (palette, look, connector curve) on the canvas. */
   applyStyle() {
     const style = M.readStyle(this.m);
@@ -422,7 +428,7 @@ export class Canvas {
       if (!A || !B) return;
       const key = [e.from, e.to].sort().join('\u0000');
       const off = (pairIndex[i] - (pairCount.get(key) - 1) / 2) * 14;
-      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, off, this.curve);
+      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, off, this.curveOf(e));
       const sel = this.sel.edges.has(i) ? '-sel' : '';
       const mk = (c) => (c === '>' || c === '<' ? 'arrow' : c === 'o' ? 'circle' : c === 'x' ? 'cross' : '');
       const ms = mk(e.start);
@@ -491,6 +497,36 @@ export class Canvas {
     }
     this.vp.innerHTML = out.join('');
     this.renderOverlay();
+    this.hooks.render?.();
+  }
+
+  /** Geometry of edge `i` as drawn (path, label anchor mx/my), or null. */
+  edgeGeo(i) {
+    const e = this.m?.edges[i];
+    const A = e && this.box(e.from);
+    const B = e && this.box(e.to);
+    if (!A || !B) return null;
+    return e.from === e.to ? selfLoop(A) : connector(A, B, 0, this.curveOf(e));
+  }
+
+  /** Client-coordinate rectangle around the selection (an edge counts by its label anchor), or null. */
+  selectionRect() {
+    const pts = [];
+    for (const id of this.sel.nodes) {
+      const b = this.box(id);
+      if (b) pts.push([b.x - b.w / 2, b.y - b.h / 2], [b.x + b.w / 2, b.y + b.h / 2]);
+    }
+    for (const id of this.sel.groups) {
+      const b = this.gbox?.get(id);
+      if (b) pts.push([b.x1, b.y1], [b.x2, b.y2]);
+    }
+    for (const i of this.sel.edges) {
+      const g = this.edgeGeo(i);
+      if (g) pts.push([g.mx, g.my]);
+    }
+    if (!pts.length) return null;
+    const s = pts.map(([x, y]) => this.toScreen(x, y));
+    return { left: Math.min(...s.map((p) => p.x)), right: Math.max(...s.map((p) => p.x)), top: Math.min(...s.map((p) => p.y)), bottom: Math.max(...s.map((p) => p.y)) };
   }
 
   renderOverlay() {
@@ -892,10 +928,8 @@ export class Canvas {
       width = Math.max(140, b.w * this.view.k + 20);
     } else if (kind === 'edge') {
       const e = m.edges[id];
-      if (!e) return;
-      const A = this.box(e.from);
-      const B = this.box(e.to);
-      const geo = e.from === e.to ? selfLoop(A) : connector(A, B, 0, this.curve);
+      const geo = this.edgeGeo(id);
+      if (!e || !geo) return;
       value = e.label;
       at = this.toScreen(geo.mx, geo.my);
       width = 160;

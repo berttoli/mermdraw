@@ -13,7 +13,8 @@ installs an `mmdr` binary. If you tried an rc, move `.mmdr/` to `.mermdraw/` and
   their own mermaid theme sit on a paper card, so the canvas follows the light or dark UI and their text stays readable.
 - A Miro-style workspace: floating toolbars, a palette centered on the canvas's left edge, outline and inspector panels
   that collapse (`⌘\` and `⌥⌘\`), and a searchable file picker (`⌘P`) that groups files by folder and shows each file's
-  title and diagram count.
+  title and diagram count. A toolbar over the selection edits line ends, style, a per-line curve (`A e1@--> B` with
+  `e1@{ curve: linear }`) and color, node shape and colors, and group direction; double-click edits any label.
 - Live code pane and mermaid 12.2.0 preview for every diagram type, the version GitHub renders with (ELK layout and
   the `neo` look by default, which Auto-layout follows too). Autosave into the markdown file with conflict-safe
   merging and live reload when the file changes on disk. Canvas saves are stable from the first save.

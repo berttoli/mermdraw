@@ -232,15 +232,19 @@ export function parseFlowchart(src) {
   const stack = [];
   const linkStyles = [];
   let implicitGroups = 0;
-  // Subgraph ids, so that metadata on a subgraph (`core@{ view: collapsed }`, mermaid ≥ 11.17) is kept
-  // verbatim instead of being read as a node; a subgraph may be declared after that line.
+  // Subgraph and edge ids, so metadata on them is not read as a node: `core@{ view: collapsed }` on a
+  // subgraph (mermaid ≥ 11.17) is kept verbatim, `e1@{ curve: linear }` on an edge (`A e1@--> B`) goes on
+  // that edge. Either may be declared after its metadata line.
   const subgraphIds = new Set();
+  const edgeIds = new Set();
+  const edgeMeta = new Map(); // edge id -> { props, raw }
   for (const l of lines.slice(i)) {
     const t = l.trim();
     if (/^subgraph\b/.test(t)) {
       const g = parseSubgraphHeader(t.slice(8));
       if (!g.implicit) subgraphIds.add(g.id);
     }
+    for (const mm of t.replace(/"[^"]*"/g, '""').matchAll(EDGE_ID_RE)) edgeIds.add(mm[1]); // not inside quoted labels
   }
   const statement = (t, raw) => {
     if (!t) return;
@@ -313,8 +317,15 @@ export function parseFlowchart(src) {
     for (const piece of splitStatements(t)) {
       if (!piece) continue;
       const id = ID_RE.exec(piece)?.[0];
-      if (id && subgraphIds.has(id) && /^\s*@\{[\s\S]*\}\s*;?$/.test(piece.slice(id.length))) {
+      const meta = id && /^\s*@\{[\s\S]*\}\s*;?$/.test(piece.slice(id.length));
+      if (meta && subgraphIds.has(id)) {
         m.extras.push(piece);
+        continue;
+      }
+      if (meta && edgeIds.has(id)) {
+        const body = readBraces(piece, piece.indexOf('@{') + 1)?.body ?? '';
+        const prev = edgeMeta.get(id);
+        edgeMeta.set(id, { props: { ...prev?.props, ...parseProps(body) }, raw: [...(prev?.raw || []), piece] });
         continue;
       }
       const chain = parseChain(piece);
@@ -343,6 +354,11 @@ export function parseFlowchart(src) {
   for (const [n, css] of linkStyles) {
     if (m.edges[n]) m.edges[n].style = m.edges[n].style ? `${m.edges[n].style},${css}` : css;
     else m.extras.push(`linkStyle ${n} ${css}`);
+  }
+  for (const [id, { props, raw }] of edgeMeta) {
+    const e = m.edges.find((x) => x.id === id);
+    if (e) e.props = { ...e.props, ...props };
+    else m.extras.push(...raw);
   }
   // Edges may reference subgraphs; drop the placeholder nodes that created.
   const gids = new Set(m.groups.map((g) => g.id));
@@ -536,6 +552,8 @@ function parseProps(body) {
 }
 
 const LINK_RE = /^([<ox])?(-{2,}|={2,}|-\.+-|~{3,})([>ox])?/;
+// an edge id in front of a link: `A e1@--> B`
+const EDGE_ID_RE = /(?:^|[\s;&])([\p{L}\p{N}_]+)@(?=[-=~<]|[ox][-=])/gu;
 const TEXT_LINK_RE = /^([<ox])?(--|==|-\.)(?=\s)/;
 
 function parseLink(s, i) {
@@ -585,13 +603,19 @@ function parseLink(s, i) {
     k = close + 1;
   } else k = 0;
   const consumed = s.length - i - (rest.length - k);
-  return { link: { stroke, start, end, len: Math.max(1, len), label, style: '' }, next: i + Math.max(consumed, consumed0) };
+  return { link: { stroke, start, end, len: Math.max(1, len), label, style: '', ...(eid ? { id: eid[1] } : {}) }, next: i + Math.max(consumed, consumed0) };
 }
 
 function registerChain(m, chain, group) {
   for (const specs of chain.groups) for (const spec of specs) touchNode(m, spec, group);
   chain.links.forEach((link, k) => {
-    for (const a of chain.groups[k]) for (const b of chain.groups[k + 1]) m.edges.push({ from: a.id, to: b.id, ...link });
+    let { id, ...rest } = link;
+    for (const a of chain.groups[k]) {
+      for (const b of chain.groups[k + 1]) {
+        m.edges.push({ from: a.id, to: b.id, ...rest, ...(id ? { id } : {}) });
+        id = undefined; // an edge id names one edge: the first of an `A & B e1@--> C` fan-out
+      }
+    }
   });
 }
 
@@ -663,7 +687,8 @@ export function serializeFlowchart(m) {
     }
   };
   emit(null, 1, new Set());
-  for (const e of m.edges) out.push(`${IND}${e.from} ${linkStr(e)}${edgeLabel(e)} ${e.to}`);
+  for (const e of m.edges) out.push(`${IND}${e.from} ${e.id ? e.id + '@' : ''}${linkStr(e)}${edgeLabel(e)} ${e.to}`);
+  for (const e of m.edges) if (e.id && e.props && Object.keys(e.props).length) out.push(`${IND}${e.id}@{ ${propsStr(e.props)} }`);
 
   const visibleId = (id) => {
     const g = m.groups.find((x) => x.id === id);
@@ -711,6 +736,7 @@ function layoutLine(m, order) {
 }
 
 const quoteProp = (v) => `"${String(v).replace(/"/g, '#quot;')}"`;
+const propsStr = (p) => Object.entries(p).map(([k, v]) => `${k}: ${/^[\w.-]+$/.test(v) ? v : quoteProp(v)}`).join(', ');
 
 export function nodeDecl(n) {
   const special = n.shape === 'image' || n.shape === 'icon';
@@ -798,19 +824,47 @@ export function slug(label) {
   return id;
 }
 
+/** Whether `id` already names a node, group or edge (they share mermaid's id space). */
+const idTaken = (m, id) => !!(getNode(m, id) || getGroup(m, id) || m.edges.some((e) => e.id === id));
+
 export function uniqueId(m, base = 'n') {
-  const taken = new Set([...m.nodes.map((n) => n.id), ...m.groups.map((g) => g.id)]);
+  const taken = new Set([...m.nodes.map((n) => n.id), ...m.groups.map((g) => g.id), ...m.edges.map((e) => e.id).filter(Boolean)]);
   if (!base || !validId(base)) base = 'n';
   if (!taken.has(base) && base !== 'n') return base;
   for (let i = 1; ; i++) if (!taken.has(base + i)) return base + i;
 }
 
 export function addNode(m, { id, label, shape = 'rect', parent = null, x = 0, y = 0, props = {} } = {}) {
-  id = id && validId(id) && !getNode(m, id) && !getGroup(m, id) ? id : uniqueId(m, label ? slug(label) : 'n');
+  id = id && validId(id) && !idTaken(m, id) ? id : uniqueId(m, label ? slug(label) : 'n');
   const n = { id, label: label ?? id, shape, at: false, props, parent, explicit: true };
   m.nodes.push(n);
   m.layout[id] = { x, y };
   return n;
+}
+
+/**
+ * Sets (or with an empty value removes) one of an edge's `id@{ … }` properties, such as `curve`. An edge
+ * needs an id for that; one is assigned (e1, e2, …) and dropped again once it carries no properties.
+ */
+export function setEdgeProp(m, e, key, value) {
+  const props = { ...e.props };
+  if (value) props[key] = value;
+  else delete props[key];
+  if (Object.keys(props).length) {
+    if (!e.id) {
+      let i = 1;
+      while (idTaken(m, `e${i}`)) i++;
+      e.id = `e${i}`;
+      e.autoId = true;
+    }
+    e.props = props;
+  } else {
+    delete e.props;
+    if (e.autoId) {
+      delete e.id;
+      delete e.autoId;
+    }
+  }
 }
 
 export function addEdge(m, from, to, opts = {}) {
@@ -820,7 +874,7 @@ export function addEdge(m, from, to, opts = {}) {
 }
 
 export function renameId(m, from, to) {
-  if (from === to || !validId(to) || getNode(m, to) || getGroup(m, to)) return false;
+  if (from === to || !validId(to) || idTaken(m, to)) return false;
   for (const n of m.nodes) {
     if (n.id === from) n.id = to;
     if (n.parent === from) n.parent = to;
@@ -912,7 +966,7 @@ export function extract(m, ids) {
   ids = new Set(ids);
   const sub = emptyFlowchart(m.dir);
   sub.nodes = m.nodes.filter((n) => ids.has(n.id)).map((n) => ({ ...n, props: { ...n.props }, parent: null }));
-  sub.edges = m.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => ({ ...e }));
+  sub.edges = m.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => ({ ...e, ...(e.props ? { props: { ...e.props } } : {}) }));
   for (const id of ids) {
     if (m.styles[id]) sub.styles[id] = m.styles[id];
     if (m.classes[id]) sub.classes[id] = [...m.classes[id]];
@@ -935,7 +989,10 @@ export function merge(m, sub, dx = 0, dy = 0) {
     if (sub.classes[n.id]) m.classes[id] = [...sub.classes[n.id]];
     if (sub.links[n.id]) m.links[id] = { ...sub.links[n.id] };
   }
-  for (const e of sub.edges) if (map.has(e.from) && map.has(e.to)) m.edges.push({ ...e, from: map.get(e.from), to: map.get(e.to) });
+  for (const e of sub.edges) {
+    if (!map.has(e.from) || !map.has(e.to)) continue;
+    m.edges.push({ ...e, from: map.get(e.from), to: map.get(e.to), ...(e.id ? { id: uniqueId(m, e.id) } : {}) });
+  }
   for (const c of sub.classDefs) if (!m.classDefs.some((x) => x.name === c.name)) m.classDefs.push({ ...c });
   return [...map.values()];
 }
