@@ -153,6 +153,11 @@ export class Canvas {
       case 'sm-circ': case 'f-circ': w = h = 16; break;
       case 'fr-circ': w = h = 22; break;
       case 'fork': w = 90; h = 10; break;
+      case 'person': w = Math.max(w + 8, 90); h += personHead(w) * 1.73; break;
+      case 'browser': w = Math.max(w, 100); h += 18; break;
+      case 'console': w = Math.max(w, 100); h += 20; break;
+      case 'folder': w = Math.max(w, 90); h += FOLDER_TAB; break;
+      case 'bucket': w = Math.max(w / 0.86, 90); h += 2 * bucketRim(w); break;
       case 'image': {
         const iw = +p.w || 64;
         const ih = +p.h || 64;
@@ -173,6 +178,9 @@ export class Canvas {
   }
 
   box(id) {
+    // what a collapsed group hides is drawn as (and connects to) that group's box
+    const owner = this.hidden?.get(id);
+    if (owner) return this.box(owner);
     const n = M.getNode(this.m, id);
     if (n) {
       const p = this.m.layout[id] || { x: 0, y: 0 };
@@ -187,7 +195,7 @@ export class Canvas {
         if (n.shape !== 'text' && displayLines(n.label).join('').trim() !== '') {
           b.side = { w: pic.w, dy: pr.pos === 't' ? s.h / 2 - pic.h / 2 : pic.h / 2 - s.h / 2 };
         }
-      }
+      } else Object.assign(b, attach(n.shape, s.w, s.h));
       return b;
     }
     const g = this.gbox?.get(id);
@@ -195,10 +203,17 @@ export class Canvas {
     return null;
   }
 
+  /** A collapsed group's box: its title over a dashed rule and a ••• marker. */
+  collapsedSize(g) {
+    const lines = displayLines(g.title);
+    return { w: Math.max(100, ...lines.map((l) => textWidth(l) + 32)), h: lines.length * LINE + 41 };
+  }
+
   computeGroupBoxes() {
     const m = this.m;
     const boxes = new Map();
     const depth = new Map();
+    this.hidden = M.collapsedOwners(m);
     const visit = (g, d) => {
       if (boxes.has(g.id)) return boxes.get(g.id);
       boxes.set(g.id, null);
@@ -223,13 +238,21 @@ export class Canvas {
         const p = m.layout[g.id] || { x: 0, y: 0 };
         b = { x1: p.x - 100, y1: p.y - 60, x2: p.x + 100, y2: p.y + 60, empty: true };
       } else b = { x1: x1 - 20, y1: y1 - 38, x2: x2 + 20, y2: y2 + 20 };
+      if (g.view === 'collapsed') {
+        // one box with the title, centred on the contents it stands for
+        const cx = x1 === Infinity ? (b.x1 + b.x2) / 2 : (x1 + x2) / 2;
+        const cy = x1 === Infinity ? (b.y1 + b.y2) / 2 : (y1 + y2) / 2;
+        const { w, h } = this.collapsedSize(g);
+        b = { x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2, collapsed: true };
+      }
       const tw = textWidth(g.title) + 32;
-      if (b.x2 - b.x1 < tw) b.x2 = b.x1 + tw;
+      if (!b.collapsed && b.x2 - b.x1 < tw) b.x2 = b.x1 + tw;
       boxes.set(g.id, b);
       return b;
     };
     for (const g of m.groups) if (!g.parent || !M.getGroup(m, g.parent)) visit(g, 0);
     for (const g of m.groups) visit(g, 0);
+    for (const id of this.hidden.keys()) boxes.delete(id);
     this.gbox = boxes;
     this.gdepth = depth;
     return boxes;
@@ -402,6 +425,19 @@ export class Canvas {
       if (!b) continue;
       const st = M.effectiveStyle(m, g.id);
       const cls = ['grp', this.sel.groups.has(g.id) && 'sel', this.dropTarget?.id === g.id && 'drop', b.empty && 'empty'].filter(Boolean).join(' ');
+      if (b.collapsed) {
+        // like mermaid's collapsedGroup: the title, a dashed rule and a ••• marker
+        const lines = displayLines(g.title);
+        const cx = (b.x1 + b.x2) / 2;
+        const rule = b.y1 + lines.length * LINE + 17;
+        out.push(`<g class="${cls}" data-group="${esc(g.id)}">
+          <rect class="gbox" x="${b.x1}" y="${b.y1}" width="${b.x2 - b.x1}" height="${b.y2 - b.y1}" rx="8" style="${esc(styleAttr(st))}"/>
+          ${textLines(lines, cx, b.y1 + 11 + (lines.length * LINE) / 2, textColor(st))}
+          <line class="gsep" x1="${b.x1 + 8}" y1="${rule}" x2="${b.x2 - 8}" y2="${rule}"/>
+          ${[-10, 0, 10].map((dx) => `<circle class="gdot" cx="${cx + dx}" cy="${rule + 12}" r="2.5"/>`).join('')}
+        </g>`);
+        continue;
+      }
       out.push(`<g class="${cls}" data-group="${esc(g.id)}">
         <rect class="gbox" x="${b.x1}" y="${b.y1}" width="${b.x2 - b.x1}" height="${b.y2 - b.y1}" rx="10" style="${esc(styleAttr(st))}"/>
         <rect class="gbar" x="${b.x1}" y="${b.y1}" width="${b.x2 - b.x1}" height="28" rx="10"/>
@@ -409,19 +445,22 @@ export class Canvas {
       </g>`);
     }
 
-    // edges: parallel edges between the same pair fan out along the side
+    // edges: parallel edges between the same pair fan out along the side. Like mermaid, an edge into a
+    // collapsed group ends at its box, and one that stays inside it is not drawn.
+    const ends = m.edges.map((e) => [this.hidden.get(e.from) ?? e.from, this.hidden.get(e.to) ?? e.to]);
     const pairCount = new Map();
     const pairIndex = [];
     m.edges.forEach((e, i) => {
-      const key = [e.from, e.to].sort().join('\u0000');
+      const key = [...ends[i]].sort().join('\u0000');
       pairIndex[i] = pairCount.get(key) || 0;
       pairCount.set(key, pairIndex[i] + 1);
     });
     m.edges.forEach((e, i) => {
+      if (ends[i][0] === ends[i][1] && e.from !== e.to) return;
       const A = this.box(e.from);
       const B = this.box(e.to);
       if (!A || !B) return;
-      const key = [e.from, e.to].sort().join('\u0000');
+      const key = [...ends[i]].sort().join('\u0000');
       const off = (pairIndex[i] - (pairCount.get(key) - 1) / 2) * 14;
       const geo = e.from === e.to ? selfLoop(A) : connector(A, B, off, this.curve);
       const sel = this.sel.edges.has(i) ? '-sel' : '';
@@ -444,6 +483,7 @@ export class Canvas {
     });
 
     for (const n of m.nodes) {
+      if (this.hidden.has(n.id)) continue;
       const b = this.box(n.id);
       const st = M.effectiveStyle(m, n.id);
       const cls = ['node', `s-${n.shape}`, this.sel.nodes.has(n.id) && 'sel'].filter(Boolean).join(' ');
@@ -481,8 +521,7 @@ export class Canvas {
         if (hasLabel) inner += textLines(lines, 0, top ? -b.h / 2 + (lines.length * LINE) / 2 + 2 : b.h / 2 - (lines.length * LINE) / 2 - 1, st.get('color'));
       } else {
         inner += shapeMarkup(n.shape, b.w, b.h, styleAttr(st));
-        const dy = n.shape === 'cyl' || n.shape === 'lin-cyl' ? 6 : n.shape === 'tri' ? 12 : n.shape === 'flip-tri' ? -12 : n.shape.includes('doc') ? -4 : 0;
-        if (!['sm-circ', 'f-circ', 'fr-circ', 'fork'].includes(n.shape)) inner += textLines(lines, 0, dy, textColor(st));
+        if (!['sm-circ', 'f-circ', 'fr-circ', 'fork'].includes(n.shape)) inner += textLines(lines, 0, labelDy(n.shape, b.w, b.h), textColor(st));
       }
       if (m.links[n.id]?.url) inner += `<text class="link-badge" x="${b.w / 2 - 4}" y="${-b.h / 2 + 12}">↗</text>`;
       const hw = b.w / 2 + 1;
@@ -622,7 +661,7 @@ export class Canvas {
       let target = null;
       let best = -1;
       for (const [id, b] of d.snapshot) {
-        if (d.groups.has(id)) continue;
+        if (d.groups.has(id) || b.collapsed) continue;
         if (w.x >= b.x1 && w.x <= b.x2 && w.y >= b.y1 && w.y <= b.y2) {
           const dep = this.gdepth.get(id) || 0;
           if (dep > best) (best = dep), (target = id);
@@ -734,6 +773,7 @@ export class Canvas {
       const x1 = Math.min(d.start.x, d.cur.x), x2 = Math.max(d.start.x, d.cur.x);
       const y1 = Math.min(d.start.y, d.cur.y), y2 = Math.max(d.start.y, d.cur.y);
       const nodes = m.nodes.filter((n) => {
+        if (this.hidden.has(n.id)) return false;
         const b = this.box(n.id);
         return b.x - b.w / 2 >= x1 && b.x + b.w / 2 <= x2 && b.y - b.h / 2 >= y1 && b.y + b.h / 2 <= y2;
       }).map((n) => n.id);
@@ -787,7 +827,7 @@ export class Canvas {
     let target = null;
     let best = -1;
     for (const [id, b] of this.gbox || []) {
-      if (b && p.x >= b.x1 && p.x <= b.x2 && p.y >= b.y1 && p.y <= b.y2 && (this.gdepth.get(id) || 0) > best) {
+      if (b && !b.collapsed && p.x >= b.x1 && p.x <= b.x2 && p.y >= b.y1 && p.y <= b.y2 && (this.gdepth.get(id) || 0) > best) {
         best = this.gdepth.get(id) || 0;
         target = id;
       }
@@ -1150,8 +1190,11 @@ function connector(A, B, off, curve = '') {
     p1 = { x: A.x + sx * ((A.side?.w ?? A.w) / 2 + ga), y: A.y + (A.side?.dy || 0) + off };
     p2 = { x: B.x - sx * ((B.side?.w ?? B.w) / 2 + gb), y: B.y + (B.side?.dy || 0) + off };
   } else {
-    p1 = { x: A.x + off, y: A.y + sy * (A.h / 2 + ga) };
-    p2 = { x: B.x + off, y: B.y - sy * (B.h / 2 + gb) };
+    // `top`: how far below the box's top the outline crosses its centre line (a folder's tab)
+    const ta = sy < 0 ? A.top || 0 : 0;
+    const tb = sy > 0 ? B.top || 0 : 0;
+    p1 = { x: A.x + off, y: A.y + sy * (A.h / 2 + ga - ta) };
+    p2 = { x: B.x + off, y: B.y - sy * (B.h / 2 + gb - tb) };
   }
   if (ROUND.has(A.shape) || A.shape === 'diam') (horiz ? (p1.y = A.y) : (p1.x = A.x));
   if (ROUND.has(B.shape) || B.shape === 'diam') (horiz ? (p2.y = B.y) : (p2.x = B.x));
@@ -1180,6 +1223,37 @@ function selfLoop(A) {
   const x2 = A.x;
   const y2 = A.y - A.h / 2;
   return { d: `M${x1},${y1} C${x1 + 50},${y1} ${x2},${y2 - 50} ${x2},${y2}`, mx: x1 + 18, my: y2 - 18 };
+}
+
+// Proportions of the mermaid 11.17 architecture shapes, shared by sizeOf, shapeMarkup and attach.
+const personHead = (w, h = Infinity) => Math.min(Math.max(w * 0.2, 14), 28, h * 0.32);
+const bucketRim = (w) => Math.min(Math.max(w * 0.08, 5), 10);
+const windowBar = (h) => Math.min(18, h / 3);
+const FOLDER_TAB = 10;
+
+/** Vertical offset of the label from the node's centre, for shapes whose text area isn't centred. */
+function labelDy(shape, w, h) {
+  switch (shape) {
+    case 'cyl': case 'lin-cyl': return 6;
+    case 'tri': return 12;
+    case 'flip-tri': return -12;
+    case 'person': return personHead(w, h) * 0.865;
+    case 'browser': return windowBar(h) / 2;
+    case 'console': return 10;
+    case 'folder': return FOLDER_TAB / 2;
+    case 'bucket': return bucketRim(w) / 2;
+    default: return shape.includes('doc') ? -4 : 0;
+  }
+}
+
+/** Where edges meet shapes whose outline doesn't reach the middle of every box side (see connector). */
+function attach(shape, w, h) {
+  switch (shape) {
+    case 'person': return { side: { w, dy: personHead(w, h) * 0.865 } }; // the body, not the head
+    case 'folder': return { top: FOLDER_TAB, side: { w, dy: FOLDER_TAB / 2 } }; // below the tab
+    case 'bucket': return { side: { w: w * 0.86, dy: 0 } }; // the slanted sides, halfway down
+    default: return {};
+  }
 }
 
 export function shapeMarkup(shape, w, h, st) {
@@ -1248,6 +1322,31 @@ export function shapeMarkup(shape, w, h, st) {
     case 'curv-trap': return path(`M${L + 14},${T}H${R - h / 2}A${h / 2},${h / 2} 0 0 1 ${R - h / 2},${B}H${L + 14}L${L},0Z`);
     case 'notch-pent': return poly([[L + 10, T], [R - 10, T], [R, T + 10], [R, B], [L, B], [L, T + 10]]);
     case 'sl-rect': return poly([[L, T + 10], [R, T], [R, B], [L, B]]);
+    case 'person': {
+      const r = personHead(w, h);
+      const top = T + r * 1.73;
+      const rx = Math.min(w * 0.177, (B - top) * 0.45);
+      return `<rect ${a} x="${L}" y="${top}" width="${w}" height="${B - top}" rx="${rx}"/>` + circle(r, ` cy="${T + r}"`);
+    }
+    case 'browser': {
+      const bar = windowBar(h);
+      const k = bar / 18;
+      const dots = [0, 1, 2].map((i) => `<circle class="sh-solid" cx="${L + (12 + i * 9) * k}" cy="${T + bar / 2}" r="${2.5 * k}"/>`).join('');
+      return rect(Math.min(12, h / 4)) + line(`M${L},${T + bar}H${R}`) + dots
+        + `<rect class="sh-line sh-faint" x="${L + 44 * k}" y="${T + 4 * k}" width="${Math.max(w - 56 * k, 10 * k)}" height="${bar - 8 * k}" rx="${3 * k}"/>`;
+    }
+    case 'console': return rect(Math.min(12, h / 4)) + `<text class="sh-glyph" x="${L + 12}" y="${T + 16}">&gt;_</text>`;
+    case 'folder': {
+      const tab = Math.max(w * 0.38, 28);
+      return poly([[L, T], [L + tab, T], [L + tab, T + FOLDER_TAB], [R, T + FOLDER_TAB], [R, B], [L, B]]);
+    }
+    case 'bucket': {
+      // open-top trapezoid: the fill covers the back of the rim, the rim's ellipse is drawn over it
+      const ry = bucketRim(w);
+      const bw = w * 0.36;
+      return path(`M${L},${T + ry}L${-bw},${B - ry}A${bw},${ry} 0 0 0 ${bw},${B - ry}L${R},${T + ry}A${R},${ry} 0 0 0 ${L},${T + ry}Z`)
+        + `<ellipse class="sh-line" cy="${T + ry}" rx="${R}" ry="${ry}"/>`;
+    }
     default: return rect(3);
   }
 }

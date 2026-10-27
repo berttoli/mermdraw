@@ -347,23 +347,79 @@ test('nodes declared after subgraphs still serialize stably on the first save', 
   assert.match(once, /%% mermdraw:layout a:0,0 c:20,0 b:10,0$/);
 });
 
-test('metadata on a subgraph (view: collapsed) is kept as-is, not turned into a node', () => {
+test('view: collapsed on a subgraph is the group\'s view, not a node', () => {
   for (const src of [
     'flowchart LR\n  subgraph core [Core]\n    a --> b\n  end\n  core@{ view: collapsed }',
     'flowchart LR\n  core@{ view: collapsed }\n  subgraph core [Core]\n    a --> b\n  end',
+    'flowchart LR\n  subgraph core [Core]\n    a --> b\n    core@{ view: "collapsed" };\n  end',
   ]) {
     const m = M.parseFlowchart(src);
     assert.deepEqual(m.nodes.map((n) => n.id), ['a', 'b']);
-    assert.deepEqual(m.extras, ['core@{ view: collapsed }']);
+    assert.deepEqual(m.extras, []);
+    assert.equal(M.getGroup(m, 'core').view, 'collapsed');
     const out = M.serializeFlowchart(m);
     assert.doesNotMatch(out, /shape: rect/);
-    assert.match(out, /\n {4}core@\{ view: collapsed \}$/);
+    assert.match(out, /\n {4}a --> b\n {4}core@\{ view: collapsed \}$/);
     assert.equal(roundTrip(out), out);
   }
+});
+
+test('the collapsed view moves with its group and goes away with it', () => {
+  const src = 'flowchart LR\n    x\n    subgraph core [Core]\n        a\n    end\n    x --> a\n    core@{ view: collapsed }\n    style core fill:#eee';
+  const m = M.parseFlowchart(src);
+  assert.equal(M.serializeFlowchart(m), src);
+  assert.ok(M.renameId(m, 'core', 'services'));
+  const renamed = M.serializeFlowchart(m);
+  assert.match(renamed, /\n {4}services@\{ view: collapsed \}\n/);
+  assert.doesNotMatch(renamed, /core/);
+  assert.equal(roundTrip(renamed), renamed);
+  M.getGroup(m, 'services').view = null;
+  assert.doesNotMatch(M.serializeFlowchart(m), /@\{ view/);
+  M.getGroup(m, 'services').view = 'collapsed';
+  M.removeGroup(m, 'services');
+  assert.doesNotMatch(M.serializeFlowchart(m), /services/);
+  const g = M.getGroup(M.parseFlowchart('flowchart LR\n  subgraph g\n    a\n  end'), 'g');
+  assert.equal(g.view, null);
+});
+
+test('other metadata on a subgraph stays verbatim', () => {
+  for (const meta of ['core@{ view: collapsed, note: "x" }', 'core@{ view: "a b" }', 'core@{ }']) {
+    const m = M.parseFlowchart(`flowchart LR\n  subgraph core\n    a\n  end\n  ${meta}`);
+    assert.deepEqual(m.nodes.map((n) => n.id), ['a']);
+    assert.deepEqual(m.extras, [meta]);
+    assert.equal(M.getGroup(m, 'core').view, null);
+  }
+});
+
+test('collapsedOwners maps hidden nodes and groups to the outermost collapsed group', () => {
+  const m = M.parseFlowchart(`flowchart TB
+  subgraph platform
+    subgraph orders
+      o1 --> o2
+      subgraph inner
+        o3
+      end
+    end
+    b1
+  end
+  subgraph edge
+    e1
+  end
+  orders@{ view: collapsed }
+  inner@{ view: collapsed }`);
+  assert.deepEqual(Object.fromEntries(M.collapsedOwners(m)), { o1: 'orders', o2: 'orders', o3: 'orders', inner: 'orders' });
+  M.getGroup(m, 'platform').view = 'collapsed';
+  assert.deepEqual([...M.collapsedOwners(m).keys()].sort(), ['b1', 'inner', 'o1', 'o2', 'o3', 'orders']);
+  assert.ok([...M.collapsedOwners(m).values()].every((g) => g === 'platform'));
+  assert.equal(M.collapsedOwners(M.parseFlowchart('flowchart LR\n  a --> b')).size, 0);
 });
 
 test('mermaid 11.17 architecture shapes round-trip', () => {
   const src = 'flowchart LR\n    u@{ shape: person, label: "User" }\n    w@{ shape: browser, label: "Web" }\n    t@{ shape: console, label: "CLI" }\n    f@{ shape: folder, label: "Repo" }\n    s@{ shape: bucket, label: "Assets" }\n    u --> w\n    w --> s';
   assert.deepEqual(M.parseFlowchart(src).nodes.map((n) => n.shape), ['person', 'browser', 'console', 'folder', 'bucket']);
   assert.equal(roundTrip(src), src);
+  const offered = M.SHAPES.map(([s]) => s);
+  for (const s of ['person', 'browser', 'console', 'folder', 'bucket']) assert.ok(offered.includes(s), `${s} is in the Shape menu`);
+  assert.equal(M.normShape('directory'), 'folder');
+  assert.equal(roundTrip('flowchart LR\n    d@{ shape: directory, label: "Docs" }'), 'flowchart LR\n    d@{ shape: folder, label: "Docs" }');
 });

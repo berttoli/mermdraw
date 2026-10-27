@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The canvas draws mermaid 11.17's architecture shapes (person, browser, console, folder and bucket) the way mermaid
+  does, with edges meeting their outlines. They are in the Shape menu, and person and browser are in the palette.
+- Collapsed subgraphs (`group@{ view: collapsed }`): the canvas shows the group as one box with its title and a •••
+  marker, and edges to anything inside it end at that box. A View toggle in the Group inspector writes or removes the
+  statement, which follows the group when its id changes. Auto-layout lays out collapsed groups as mermaid does too.
+
 ## 0.1.0 — 2026-10-26
 
 First public release.
