@@ -346,3 +346,24 @@ test('nodes declared after subgraphs still serialize stably on the first save', 
   assert.match(once, /class c,b x/);
   assert.match(once, /%% mermdraw:layout a:0,0 c:20,0 b:10,0$/);
 });
+
+test('metadata on a subgraph (view: collapsed) is kept as-is, not turned into a node', () => {
+  for (const src of [
+    'flowchart LR\n  subgraph core [Core]\n    a --> b\n  end\n  core@{ view: collapsed }',
+    'flowchart LR\n  core@{ view: collapsed }\n  subgraph core [Core]\n    a --> b\n  end',
+  ]) {
+    const m = M.parseFlowchart(src);
+    assert.deepEqual(m.nodes.map((n) => n.id), ['a', 'b']);
+    assert.deepEqual(m.extras, ['core@{ view: collapsed }']);
+    const out = M.serializeFlowchart(m);
+    assert.doesNotMatch(out, /shape: rect/);
+    assert.match(out, /\n {4}core@\{ view: collapsed \}$/);
+    assert.equal(roundTrip(out), out);
+  }
+});
+
+test('mermaid 11.17 architecture shapes round-trip', () => {
+  const src = 'flowchart LR\n    u@{ shape: person, label: "User" }\n    w@{ shape: browser, label: "Web" }\n    t@{ shape: console, label: "CLI" }\n    f@{ shape: folder, label: "Repo" }\n    s@{ shape: bucket, label: "Assets" }\n    u --> w\n    w --> s';
+  assert.deepEqual(M.parseFlowchart(src).nodes.map((n) => n.shape), ['person', 'browser', 'console', 'folder', 'bucket']);
+  assert.equal(roundTrip(src), src);
+});

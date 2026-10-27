@@ -192,7 +192,7 @@ function loadSource(src, { fit = false, fromCode = false, keep = false } = {}) {
     const m = S.model;
     const token = ++S.layoutToken;
     if (m.nodes.length && m.nodes.every((n) => !m.layout[n.id])) {
-      mermaidLayout(src).then((pos) => {
+      mermaidLayout(src, m).then((pos) => {
         if (token !== S.layoutToken) return;
         // only trust mermaid's layout if it placed (nearly) everything; else lay out from scratch
         const placed = pos ? m.nodes.filter((n) => pos[n.id]).length : 0;
@@ -541,8 +541,8 @@ function previewSource(src) {
 }
 
 let laySeq = 0;
-/** Lets mermaid lay the diagram out and reads back node centres from its SVG. */
-async function mermaidLayout(src) {
+/** Lets mermaid lay the diagram out and reads back node centres from its SVG, scaled to the canvas's node sizes. */
+async function mermaidLayout(src, m) {
   const id = `mermdraw-lay-${++laySeq}`;
   const host = $('#layout-host');
   try {
@@ -554,18 +554,24 @@ async function mermaidLayout(src) {
     const rect = root.getBoundingClientRect();
     const scale = vb && vb.width && rect.width ? vb.width / rect.width : 1;
     const pos = {};
+    const ratios = [];
     // plain nodes are g.node; icon/image nodes are g.icon-shape / g.image-shape
     for (const el of root.querySelectorAll('g[id]')) {
       const mm = /(?:^|-)flowchart-(.+)-\d+$/.exec(el.id);
       if (/\b(cluster|edge|label)/.test(el.getAttribute('class') || '')) continue;
       if (!mm) continue;
       const r = el.getBoundingClientRect();
-      pos[mm[1]] = {
-        x: Math.round(((r.left + r.width / 2 - rect.left) * scale + (vb?.x || 0)) * 1.15),
-        y: Math.round(((r.top + r.height / 2 - rect.top) * scale + (vb?.y || 0)) * 1.15),
-      };
+      const n = M.getNode(m, mm[1]);
+      if (n && r.width) ratios.push(canvas.sizeOf(n).w / (r.width * scale));
+      pos[mm[1]] = { x: (r.left + r.width / 2 - rect.left) * scale + (vb?.x || 0), y: (r.top + r.height / 2 - rect.top) * scale + (vb?.y || 0) };
     }
-    return Object.keys(pos).length ? pos : null;
+    if (!ratios.length) return null;
+    // Mermaid sizes nodes by its own look and fonts (neo nodes are wider than the canvas's), so scale the
+    // layout by the median size ratio, plus some breathing room, to keep the proportions mermaid renders.
+    ratios.sort((a, b) => a - b);
+    const k = 1.15 * ratios[ratios.length >> 1];
+    for (const p of Object.values(pos)) [p.x, p.y] = [Math.round(p.x * k), Math.round(p.y * k)];
+    return pos;
   } catch {
     return null;
   } finally {
@@ -577,7 +583,7 @@ async function mermaidLayout(src) {
 async function autoLayout() {
   if (!S.model) return;
   const m = S.model;
-  let pos = await mermaidLayout(S.src);
+  let pos = await mermaidLayout(S.src, m);
   if (pos && m.nodes.filter((n) => pos[n.id]).length < m.nodes.length * 0.8) pos = null;
   const fallback = !pos;
   const layout = pos || M.layeredLayout(m, (id) => canvas.sizeOf(M.getNode(m, id)));
@@ -928,7 +934,7 @@ function styleSection(m) {
   const curve = style.curve.startsWith('step') ? 'step' : style.curve === 'linear' ? 'linear' : '';
   return `<div class="ins-sub">Style <span class="stage-chip experimental">labs</span></div>
     ${row('Theme', `<select data-k="preset">${Object.entries(M.STYLE_PRESETS).map(([id, p]) => `<option value="${id}"${id === preset ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}${preset === 'custom' ? '<option value="custom" selected>Custom</option>' : ''}</select>`)}
-    ${row('Look', seg('look', style.look === 'handDrawn' ? 'handDrawn' : '', [['', 'Classic'], ['handDrawn', 'Hand-drawn']]))}
+    ${row('Look', seg('look', ['classic', 'handDrawn'].includes(style.look) ? style.look : '', [['', 'Neo', "mermaid's default look, as GitHub shows it"], ['classic', 'Classic', 'The look before mermaid 12'], ['handDrawn', 'Hand-drawn']]))}
     ${row('Lines', seg('curve', curve, Object.entries(M.CURVES)))}
     ${style.editable ? '' : '<p class="warn">This diagram\'s frontmatter uses YAML mermdraw can\'t rewrite safely — edit the style in the code.</p>'}`;
 }

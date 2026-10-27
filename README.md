@@ -9,7 +9,7 @@
   <a href="https://github.com/berttoli/mermdraw/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/berttoli/mermdraw/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Dependencies: 0" src="https://img.shields.io/badge/dependencies-0-brightgreen.svg">
-  <img alt="mermaid 11.17" src="https://img.shields.io/badge/mermaid-11.17-ff3670.svg">
+  <img alt="mermaid 12.2" src="https://img.shields.io/badge/mermaid-12.2-ff3670.svg">
 </p>
 
 **mermdraw** is a tiny local editor for the mermaid diagrams inside your markdown. Point it at a file, drag boxes
@@ -43,7 +43,8 @@ mermdraw docs/architecture.md        # opens the editor in your browser
 **Code and live preview for every diagram type**
 - Four views: **Canvas**, **Split**, **Preview**, and **Markdown** for editing the whole file.
 - A syntax-highlighted code pane. Typing updates the canvas and preview immediately.
-- The real mermaid 11.17.2 renderer is embedded (works offline). The preview shows what GitHub draws; export it as SVG.
+- The real mermaid 12.2.0 renderer is embedded (works offline), the same version GitHub renders with, so the preview
+  shows what GitHub draws; export it as SVG.
 - An outline of the file's headings and diagrams. Add diagrams from nine templates (flowchart, sequence, class,
   state, ER, architecture, C4, gantt, mindmap) or delete them.
 
@@ -64,7 +65,7 @@ mermdraw docs/architecture.md        # opens the editor in your browser
   so GitHub renders them too.
 
 **Small and safe**
-- One ~1.7 MB std-only Rust binary: no runtime, no dependencies, starts instantly. `--app` opens a chromeless window.
+- One ~2.2 MB std-only Rust binary: no runtime, no dependencies, starts instantly. `--app` opens a chromeless window.
 - Listens on `127.0.0.1` only, rejects foreign `Host` headers, never leaves the folder it serves, and only accepts
   image uploads.
 
@@ -93,6 +94,9 @@ sudo mv "mermdraw-$target/mermdraw" /usr/local/bin/
 On Windows, download `mermdraw-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
 signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mermdraw`). If macOS refuses to open a
 binary downloaded in a browser, run `xattr -d com.apple.quarantine mermdraw`.
+
+The editor opens in your browser and needs a current Chrome, Edge or Firefox, or Safari 17.4 or later (mermaid 12's
+minimum).
 
 Or build it with Rust:
 
@@ -306,7 +310,7 @@ npm test                                    # parser / serializer / example roun
 cargo build --release && tests/smoke.sh     # end-to-end: CLI commands + HTTP API of the real binary
 MERMDRAW_WEB=web cargo run -- examples      # serve web/ from disk: edit JS/CSS, reload the page
 node scripts/screenshots.mjs                # regenerate the README images with headless Chrome
-./scripts/update-mermaid.sh 11.17.2         # re-vendor mermaid
+./scripts/update-mermaid.sh 12.2.0          # re-vendor mermaid
 ```
 
 CI runs all of the tests (plus `cargo fmt --check`, `clippy -D warnings` and shellcheck) on Linux, macOS and Windows,

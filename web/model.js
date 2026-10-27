@@ -232,6 +232,16 @@ export function parseFlowchart(src) {
   const stack = [];
   const linkStyles = [];
   let implicitGroups = 0;
+  // Subgraph ids, so that metadata on a subgraph (`core@{ view: collapsed }`, mermaid ≥ 11.17) is kept
+  // verbatim instead of being read as a node; a subgraph may be declared after that line.
+  const subgraphIds = new Set();
+  for (const l of lines.slice(i)) {
+    const t = l.trim();
+    if (/^subgraph\b/.test(t)) {
+      const g = parseSubgraphHeader(t.slice(8));
+      if (!g.implicit) subgraphIds.add(g.id);
+    }
+  }
   const statement = (t, raw) => {
     if (!t) return;
     if (t.startsWith('%%')) {
@@ -302,6 +312,11 @@ export function parseFlowchart(src) {
     }
     for (const piece of splitStatements(t)) {
       if (!piece) continue;
+      const id = ID_RE.exec(piece)?.[0];
+      if (id && subgraphIds.has(id) && /^\s*@\{[\s\S]*\}\s*;?$/.test(piece.slice(id.length))) {
+        m.extras.push(piece);
+        continue;
+      }
       const chain = parseChain(piece);
       if (!chain) {
         m.extras.push(piece);
