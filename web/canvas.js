@@ -177,7 +177,18 @@ export class Canvas {
     if (n) {
       const p = this.m.layout[id] || { x: 0, y: 0 };
       const s = this.sizeOf(n);
-      return { x: p.x, y: p.y, w: s.w, h: s.h, shape: n.shape };
+      const b = { x: p.x, y: p.y, w: s.w, h: s.h, shape: n.shape };
+      if (n.shape === 'icon' || n.shape === 'image' || n.shape === 'text') {
+        // Borderless nodes: stop arrows short of their content, and meet captioned icons
+        // and images at the picture itself rather than at the edge of a wide caption.
+        b.gap = 6;
+        const pr = n.props || {};
+        const pic = n.shape === 'icon' ? { w: (+pr.h || 48) + (pr.form ? 20 : 0), h: (+pr.h || 48) + (pr.form ? 20 : 0) } : { w: +pr.w || 64, h: +pr.h || 64 };
+        if (n.shape !== 'text' && displayLines(n.label).join('').trim() !== '') {
+          b.side = { w: pic.w, dy: pr.pos === 't' ? s.h / 2 - pic.h / 2 : pic.h / 2 - s.h / 2 };
+        }
+      }
+      return b;
     }
     const g = this.gbox?.get(id);
     if (g) return { x: (g.x1 + g.x2) / 2, y: (g.y1 + g.y2) / 2, w: g.x2 - g.x1, h: g.y2 - g.y1, shape: 'rect' };
@@ -1120,12 +1131,14 @@ function connector(A, B, off, curve = '') {
   const sx = Math.sign(dx) || 1;
   const sy = Math.sign(dy) || 1;
   let p1, p2;
+  const ga = A.gap || 0;
+  const gb = B.gap || 0;
   if (horiz) {
-    p1 = { x: A.x + (sx * A.w) / 2, y: A.y + off };
-    p2 = { x: B.x - (sx * B.w) / 2, y: B.y + off };
+    p1 = { x: A.x + sx * ((A.side?.w ?? A.w) / 2 + ga), y: A.y + (A.side?.dy || 0) + off };
+    p2 = { x: B.x - sx * ((B.side?.w ?? B.w) / 2 + gb), y: B.y + (B.side?.dy || 0) + off };
   } else {
-    p1 = { x: A.x + off, y: A.y + (sy * A.h) / 2 };
-    p2 = { x: B.x + off, y: B.y - (sy * B.h) / 2 };
+    p1 = { x: A.x + off, y: A.y + sy * (A.h / 2 + ga) };
+    p2 = { x: B.x + off, y: B.y - sy * (B.h / 2 + gb) };
   }
   if (ROUND.has(A.shape) || A.shape === 'diam') (horiz ? (p1.y = A.y) : (p1.x = A.x));
   if (ROUND.has(B.shape) || B.shape === 'diam') (horiz ? (p2.y = B.y) : (p2.x = B.x));

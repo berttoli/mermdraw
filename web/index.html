@@ -16,22 +16,22 @@
   <div class="crumb" id="crumb"></div>
   <div class="spacer"></div>
   <div class="seg" id="views">
-    <button data-view="canvas" title="Canvas (⌥1)">Canvas</button>
-    <button data-view="split" title="Canvas + preview (⌥2)">Split</button>
-    <button data-view="preview" title="Mermaid preview (⌥3)">Preview</button>
-    <button data-view="doc" title="Whole markdown file (⌥4)">Markdown</button>
+    <button data-view="canvas" data-tip="Canvas only" data-key="⌥1">Canvas</button>
+    <button data-view="split" data-tip="Canvas and preview" data-key="⌥2">Split</button>
+    <button data-view="preview" data-tip="What GitHub renders" data-key="⌥3">Preview</button>
+    <button data-view="doc" data-tip="Edit the whole file" data-key="⌥4">Markdown</button>
   </div>
   <span id="status" class="status"></span>
-  <label class="toggle" title="Save automatically after each change"><input type="checkbox" id="autosave"> Autosave</label>
-  <button id="save" class="btn" title="Save (⌘S)">Save</button>
-  <button id="labs" class="btn" title="Feature flags — try experiments">⚗ Labs</button>
-  <button id="theme" class="icon-btn" title="Theme"></button>
-  <button id="help" class="icon-btn" title="Shortcuts (?)">?</button>
+  <label class="toggle" data-tip="Save after every change"><input type="checkbox" id="autosave"> Autosave</label>
+  <button id="save" class="btn" data-tip="Save now" data-key="⌘S">Save</button>
+  <button id="labs" class="btn" data-tip="Feature flags">⚗ Labs</button>
+  <button id="theme" class="icon-btn" data-tip="Theme" aria-label="Theme"></button>
+  <button id="help" class="icon-btn" data-tip="Keyboard shortcuts" data-key="?" aria-label="Keyboard shortcuts">?</button>
 </header>
 
 <div class="main">
   <aside class="side">
-    <div class="pane-h">Outline <span class="spacer"></span><button id="add-diagram" class="icon-btn" title="New diagram">+</button></div>
+    <div class="pane-h">Outline <span class="spacer"></span><button id="add-diagram" class="icon-btn" data-tip="New diagram" aria-label="New diagram">+</button></div>
     <form id="new-form" class="new-form" hidden>
       <input name="title" placeholder="Title (becomes a ## heading)" autocomplete="off">
       <div class="inline">
@@ -56,17 +56,17 @@
     <div class="stage" id="stage">
       <div class="canvas-wrap" id="canvas-wrap">
         <div class="palette" id="palette"></div>
-        <button class="back" id="back" hidden title="Back (⌘[)">←<span></span></button>
+        <button class="back" id="back" hidden data-tip="Back" data-key="⌘[">←<span></span></button>
         <div id="canvas" class="canvas"></div>
         <div class="zoom">
-          <button data-z="out" title="Zoom out (-)">−</button>
-          <button data-z="fit" id="zoom-label" title="Fit (0)">100%</button>
-          <button data-z="in" title="Zoom in (+)">+</button>
+          <button data-z="out" data-tip="Zoom out" data-key="−" data-tip-side="top" aria-label="Zoom out">−</button>
+          <button data-z="fit" id="zoom-label" data-tip="Fit to screen" data-key="0" data-tip-side="top">100%</button>
+          <button data-z="in" data-tip="Zoom in" data-key="+" data-tip-side="top" aria-label="Zoom in">+</button>
         </div>
         <div class="cv-msg" id="cv-msg" hidden></div>
       </div>
       <div class="preview-wrap" id="preview-wrap">
-        <div class="pane-h">Preview <span class="muted">· what GitHub renders</span><span class="spacer"></span><button id="dl-svg" class="btn small" title="Download SVG">SVG</button></div>
+        <div class="pane-h">Preview <span class="muted">· what GitHub renders</span><span class="spacer"></span><button id="dl-svg" class="btn small" data-tip="Download the preview as SVG">SVG</button></div>
         <div class="preview" id="preview"></div>
         <pre class="pv-err" id="pv-err" hidden></pre>
       </div>
@@ -76,7 +76,7 @@
 
   <aside class="right">
     <div class="inspector" id="inspector"></div>
-    <div class="pane-h">Mermaid <span class="muted" id="code-info"></span><span class="spacer"></span><button id="copy-src" class="btn small">Copy</button></div>
+    <div class="pane-h">Mermaid <span class="muted" id="code-info"></span><span class="spacer"></span><button id="copy-src" class="btn small" data-tip="Copy the mermaid source">Copy</button></div>
     <div class="code" id="code"><pre aria-hidden="true"></pre><textarea spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off"></textarea></div>
   </aside>
 </div>
@@ -119,6 +119,7 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div class="tip" id="tip" role="tooltip" hidden><span class="tip-text"></span><kbd></kbd></div>
 <div id="layout-host" aria-hidden="true"></div>
 <input type="file" id="img-input" accept="image/*" hidden>
 </body>

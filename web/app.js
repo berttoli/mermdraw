@@ -76,6 +76,7 @@ async function init() {
   window.mmdr = { S, canvas }; // handy from the devtools console
   buildPalette();
   bindUI();
+  initTooltips();
   setView(S.view);
   $('#autosave').checked = S.autosave;
   try {
@@ -265,7 +266,7 @@ function renderOutline() {
   for (const b of S.scan.blocks) {
     items.push([b.start, `<div class="ol-d${b.index === S.index ? ' active' : ''}" data-block="${b.index}" title="${esc(b.kind)} · line ${b.start + 2}">
       <span class="ol-ico">${KIND_ICON[b.kind] || '◆'}</span><span class="ol-t">${esc(b.title || `Diagram ${b.index + 1}`)}</span>
-      <span class="ol-k">${esc(b.kind.replace(/Diagram.*$|-beta$|-v2$/, ''))}</span>${S.scan.wholeFile ? '' : `<button class="ol-x" data-del="${b.index}" title="Delete diagram">×</button>`}</div>`]);
+      <span class="ol-k">${esc(b.kind.replace(/Diagram.*$|-beta$|-v2$/, ''))}</span>${S.scan.wholeFile ? '' : `<button class="ol-x" data-del="${b.index}" data-tip="Delete diagram" aria-label="Delete diagram">×</button>`}</div>`]);
   }
   items.sort((a, b) => a[0] - b[0]);
   el.innerHTML = items.map((x) => x[1]).join('') || '<div class="ol-empty">No headings or diagrams yet.</div>';
@@ -489,7 +490,7 @@ const commitNow = () => {
 };
 
 const row = (label, html) => `<div class="row"><label>${label}</label><div>${html}</div></div>`;
-const seg = (name, value, opts) => `<div class="seg" data-seg="${name}">${opts.map(([v, l, t]) => `<button data-v="${esc(v)}" class="${v === value ? 'on' : ''}"${t ? ` title="${esc(t)}"` : ''}>${l}</button>`).join('')}</div>`;
+const seg = (name, value, opts) => `<div class="seg" data-seg="${name}">${opts.map(([v, l, t]) => `<button data-v="${esc(v)}" class="${v === value ? 'on' : ''}"${t ? ` data-tip="${esc(t)}"` : ''}>${l}</button>`).join('')}</div>`;
 
 function toHex(c) {
   if (!c) return '';
@@ -505,7 +506,7 @@ function toHex(c) {
 function colorFields(css, keys = [['fill', 'Fill'], ['stroke', 'Stroke'], ['color', 'Text']]) {
   return `<div class="colors">${keys.map(([k, l]) => {
     const v = toHex(css.get(k));
-    return `<label class="sw${v ? '' : ' unset'}"><input type="color" data-css="${k}" value="${v || '#ffffff'}"><i style="${v ? `background:${v}` : ''}"></i>${l}${v ? `<button data-clear="${k}" title="Clear">×</button>` : ''}</label>`;
+    return `<label class="sw${v ? '' : ' unset'}"><input type="color" data-css="${k}" value="${v || '#ffffff'}"><i style="${v ? `background:${v}` : ''}"></i>${l}${v ? `<button data-clear="${k}" data-tip="Clear ${l.toLowerCase()}" aria-label="Clear">×</button>` : ''}</label>`;
   }).join('')}</div>`;
 }
 
@@ -598,7 +599,7 @@ function nodeInspector(el, n) {
       + row('Size', `<input data-p="h" value="${esc(p.h || '')}" placeholder="48 (height in px)">`)
       + row('Caption', seg('pos', p.pos || 'b', [['t', 'Top'], ['b', 'Bottom']])) : ''}
     ${row('Group', `<select data-k="parent">${groupOptions(n.parent)}</select>`)}
-    ${row('Link', `<div class="inline"><input data-k="url" value="${esc(link.url || '')}" placeholder="https://… or ./service.md#2"><button class="btn small" data-act="follow"${link.url ? '' : ' disabled'} title="Open link">↗</button></div>`)}
+    ${row('Link', `<div class="inline"><input data-k="url" value="${esc(link.url || '')}" placeholder="https://… or ./service.md#2"><button class="btn small" data-act="follow"${link.url ? '' : ' disabled'} data-tip="Open link" data-key="⌘-click" aria-label="Open link">↗</button></div>`)}
     ${link.url ? row('Tooltip', `<input data-k="tooltip" value="${esc(link.tooltip || '')}">`) : ''}
     ${row('Colors', colorFields(M.parseCss(m.styles[n.id])))}
     ${m.classDefs.length || m.classes[n.id] ? row('Classes', `<input data-k="classes" value="${esc((m.classes[n.id] || []).join(', '))}" placeholder="${esc(m.classDefs.map((c) => c.name).join(', '))}">`) : ''}
@@ -695,7 +696,7 @@ function edgeInspector(el, i) {
   if (!e) return diagramInspector(el);
   const arrows = [['', 'None'], ['>', 'Arrow'], ['o', 'Circle'], ['x', 'Cross']];
   el.innerHTML = `<div class="ins-h"><span class="tag">Edge</span><code>${esc(e.from)} ${esc(M.linkStr(e))} ${esc(e.to)}</code></div>
-    ${row('From', `<div class="inline"><select data-k="from">${endpointOptions(e.from)}</select><button class="btn small" data-act="reverse" title="Reverse direction">⇄</button></div>`)}
+    ${row('From', `<div class="inline"><select data-k="from">${endpointOptions(e.from)}</select><button class="btn small" data-act="reverse" data-tip="Reverse direction" aria-label="Reverse direction">⇄</button></div>`)}
     ${row('To', `<select data-k="to">${endpointOptions(e.to)}</select>`)}
     ${row('Label', `<input data-k="label" value="${esc(labelToEditor(e.label))}" placeholder="e.g. HTTPS, publishes">`)}
     ${row('Line', seg('stroke', e.stroke, [['normal', 'Solid'], ['thick', 'Thick'], ['dotted', 'Dotted'], ['invisible', 'Hidden', 'Invisible link (layout only)']]))}
@@ -776,7 +777,7 @@ function multiInspector(el, sel) {
   const n = sel.nodes.length;
   el.innerHTML = `<div class="ins-h"><span class="tag">Selection</span><code>${n} nodes · ${sel.edges.length} edges · ${sel.groups.length} groups</code></div>
     ${n ? row('Fill', colorFields(new Map(), [['fill', 'Fill'], ['stroke', 'Stroke'], ['color', 'Text']])) : ''}
-    ${n > 1 ? row('Align', `<div class="seg"><button data-act="align-x" title="Same x">│ center</button><button data-act="align-y" title="Same y">— middle</button></div>`) : ''}
+    ${n > 1 ? row('Align', `<div class="seg"><button data-act="align-x" data-tip="Line up vertically">│ center</button><button data-act="align-y" data-tip="Line up horizontally">— middle</button></div>`) : ''}
     ${n > 2 ? row('Spread', `<div class="seg"><button data-act="dist-x">↔ evenly</button><button data-act="dist-y">↕ evenly</button></div>`) : ''}
     ${n ? row('Move to', `<select data-k="parent"><option value="__keep">…</option>${groupOptions(undefined)}</select>`) : ''}
     <div class="ins-actions"><button class="btn" data-act="group">Group <kbd>⌘G</kbd></button>${n ? '<button class="btn" data-act="dup">Duplicate</button>' : ''}<button class="btn danger" data-act="delete">Delete</button></div>`;
@@ -840,7 +841,7 @@ function diagramInspector(el) {
     ${row('Direction', seg('dir', m.dir === 'TB' ? 'TD' : m.dir, [['TD', '↓ TD'], ['LR', '→ LR'], ['BT', '↑ BT'], ['RL', '← RL']]))}
     ${row('Keyword', seg('kw', m.keyword, [['flowchart', 'flowchart'], ['graph', 'graph']]))}
     ${styleSection(m)}
-    <div class="ins-actions"><button class="btn" data-act="layout" title="Reposition everything the way mermaid lays it out">Auto-layout</button><button class="btn" data-act="fit">Fit view <kbd>0</kbd></button></div>
+    <div class="ins-actions"><button class="btn" data-act="layout" data-tip="Arrange like mermaid's own layout">Auto-layout</button><button class="btn" data-act="fit">Fit view <kbd>0</kbd></button></div>
     ${m.warnings.length ? `<div class="warn">Kept verbatim (not editable on the canvas):<ul>${m.warnings.slice(0, 8).map((w) => `<li>${esc(w.replace(/^kept verbatim: /, ''))}</li>`).join('')}</ul></div>` : ''}
     <p class="ins-note">Double-click the canvas to add a node, drag from a node's ● handle to connect, drop images from Finder, press <kbd>?</kbd> for all shortcuts.</p>`;
   bindSeg(el, 'dir', (v) => ((m.dir = v), commitNow(), renderInspector(true)));
@@ -1061,12 +1062,12 @@ function updateUrl() {
 const PALETTE = [
   ['rect', 'Process'], ['rounded', 'Rounded'], ['stadium', 'Terminal'], ['diam', 'Decision'], ['cyl', 'Database'],
   ['circle', 'Circle'], ['hex', 'Prepare'], ['fr-rect', 'Subprocess'], ['lean-r', 'Input / output'], ['doc', 'Document'],
-  ['cloud', 'Cloud'], ['h-cyl', 'Queue / stream'], null, ['text', 'Text'], ['image', 'Image'], ['group', 'Group (subgraph)'],
+  ['cloud', 'Cloud'], ['h-cyl', 'Queue / stream'], null, ['text', 'Text'], ['image', 'Image'], ['group', 'Group', '⌘G'],
 ];
 
 function paletteItems() {
   const items = [...PALETTE];
-  if (flag('icons')) items.splice(items.indexOf(null) + 1, 0, ['icon', 'Icon (logos, devicon…)']);
+  if (flag('icons')) items.splice(items.indexOf(null) + 1, 0, ['icon', 'Icon']);
   if (flag('sticky-notes')) items.push(['sticky', 'Sticky note']);
   return items;
 }
@@ -1075,7 +1076,7 @@ function buildPalette() {
   const el = $('#palette');
   el.innerHTML = paletteItems().map((p) => {
     if (!p) return '<div class="sep"></div>';
-    const [shape, label] = p;
+    const [shape, label, key] = p;
     let icon;
     if (shape === 'text') icon = '<span class="glyph">T</span>';
     else if (shape === 'image') icon = '<svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17l5-5 4 4 2-2 3 3" style="fill:none"/></svg>';
@@ -1086,7 +1087,7 @@ function buildPalette() {
       const [w, h] = shape === 'circle' ? [22, 22] : shape === 'diam' ? [30, 22] : [30, 19];
       icon = `<svg viewBox="-17 -13 34 26" width="30" height="24">${shapeMarkup(shape, w, h, '')}</svg>`;
     }
-    return `<button class="pi" draggable="true" data-shape="${shape}" title="${label} — drag onto the canvas or click">${icon}</button>`;
+    return `<button class="pi" draggable="true" data-shape="${shape}" data-tip="${label}" data-tip-side="right"${key ? ` data-key="${key}"` : ''} aria-label="${label}">${icon}</button>`;
   }).join('');
   for (const b of $$('.pi', el)) {
     b.addEventListener('dragstart', (e) => {
@@ -1095,6 +1096,66 @@ function buildPalette() {
     });
     b.addEventListener('click', () => canvas.addShape(b.dataset.shape, null));
   }
+}
+
+// ------------------------------------------------------------------ tooltips
+
+/**
+ * Hover labels for anything with data-tip (plus an optional data-key shortcut chip and
+ * data-tip-side: right, top, left or bottom). One fixed element, so nothing clips it.
+ */
+function initTooltips() {
+  const tip = $('#tip');
+  const key = $('kbd', tip);
+  let target = null;
+  let timer = 0;
+  const hide = () => {
+    clearTimeout(timer);
+    target = null;
+    tip.hidden = true;
+  };
+  const show = (el) => {
+    if (!el.isConnected || el.disabled) return;
+    $('.tip-text', tip).textContent = el.dataset.tip;
+    key.textContent = el.dataset.key || '';
+    key.hidden = !el.dataset.key;
+    const side = el.dataset.tipSide || 'bottom';
+    tip.className = `tip tip-${side}`;
+    tip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    const gap = 9;
+    let x = r.left + r.width / 2 - t.width / 2;
+    let y = r.bottom + gap;
+    if (side === 'right') [x, y] = [r.right + gap, r.top + r.height / 2 - t.height / 2];
+    else if (side === 'left') [x, y] = [r.left - gap - t.width, r.top + r.height / 2 - t.height / 2];
+    else if (side === 'top') y = r.top - gap - t.height;
+    x = Math.max(6, Math.min(innerWidth - t.width - 6, x));
+    y = Math.max(6, Math.min(innerHeight - t.height - 6, y));
+    tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  };
+  document.addEventListener('pointerover', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (el === target) return;
+    hide();
+    if (!el) return;
+    target = el;
+    timer = setTimeout(() => show(el), 350);
+  });
+  document.addEventListener('pointerout', (e) => {
+    if (target && !target.contains(e.relatedTarget)) hide();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (el?.matches(':focus-visible')) {
+      hide();
+      target = el;
+      show(el);
+    }
+  });
+  for (const ev of ['pointerdown', 'focusout', 'dragstart', 'keydown']) document.addEventListener(ev, hide, true);
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('blur', hide);
 }
 
 // ------------------------------------------------------------------ labs (feature flags)
@@ -1159,7 +1220,7 @@ async function runIconSearch() {
   if (seq !== pickerSeq) return;
   grid.innerHTML = results.map((r) => {
     const ic = iconStore.get(r.ref);
-    return ic ? `<button class="icon-cell" data-ref="${esc(r.ref)}" title="${esc(r.ref)}"><svg viewBox="0 0 ${ic.w} ${ic.h}">${ic.body}</svg><span>${esc(r.name)}</span></button>` : '';
+    return ic ? `<button class="icon-cell" data-ref="${esc(r.ref)}" data-tip="${esc(r.ref)}"><svg viewBox="0 0 ${ic.w} ${ic.h}">${ic.body}</svg><span>${esc(r.name)}</span></button>` : '';
   }).join('') || '<div class="picker-empty">No icons match.</div>';
 }
 
@@ -1370,7 +1431,8 @@ function applyTheme(t) {
   if (t === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   $('#theme').textContent = { auto: '◐', light: '☀', dark: '☾' }[t];
-  $('#theme').title = `Theme: ${t}`;
+  $('#theme').dataset.tip = `Theme: ${t}`;
+  $('#theme').setAttribute('aria-label', `Theme: ${t}`);
   setupMermaid();
   if (S.scan) schedulePreview();
 }
