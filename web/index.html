@@ -11,6 +11,7 @@
 </head>
 <body>
 <header class="top">
+  <button id="side-toggle" class="icon-btn" data-tip="Hide outline" data-key="⌘\" aria-label="Hide outline" aria-controls="side" aria-expanded="true"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.5"/><path d="M7.75 3.75v12.5"/></svg></button>
   <div class="brand"><svg viewBox="0 0 32 32" width="18" height="18"><rect x="2" y="4" width="12" height="9" rx="2"/><rect x="18" y="19" width="12" height="9" rx="2"/><path d="M8 13v7a3 3 0 0 0 3 3h7"/></svg>mermdraw</div>
   <select id="file" title="Markdown file"></select>
   <div class="crumb" id="crumb"></div>
@@ -30,7 +31,7 @@
 </header>
 
 <div class="main">
-  <aside class="side">
+  <aside class="side" id="side">
     <div class="pane-h">Outline <span class="spacer"></span><button id="add-diagram" class="icon-btn" data-tip="New diagram" aria-label="New diagram">+</button></div>
     <form id="new-form" class="new-form" hidden>
       <input name="title" placeholder="Title (becomes a ## heading)" autocomplete="off">
@@ -100,6 +101,7 @@
       <div>arrows</div><div>nudge (<kbd>⇧</kbd> ×5)</div>
       <div><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></div><div>undo / redo</div>
       <div><kbd>⌘S</kbd></div><div>save now</div>
+      <div><kbd>⌘\</kbd></div><div>show / hide the outline</div>
     </div>
     <p class="muted">Positions are stored in a <code>%% mermdraw:layout</code> comment inside the block. Mermaid ignores it, so GitHub still renders its own automatic layout.</p>
   </div>

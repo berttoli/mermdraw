@@ -322,8 +322,11 @@ export class Canvas {
       this.view = { x: r.width / 2, y: r.height / 2, k: 1 };
     } else {
       const pad = 60;
-      const k = Math.min(1.25, Math.max(0.15, Math.min((r.width - pad * 2) / (b.x2 - b.x1 || 1), (r.height - pad * 2) / (b.y2 - b.y1 || 1))));
-      this.view = { k, x: r.width / 2 - ((b.x1 + b.x2) / 2) * k, y: r.height / 2 - ((b.y1 + b.y2) / 2) * k };
+      // keep clear of the toolbar floating over the canvas's left edge
+      const left = Math.max(pad, (this.hooks.insetLeft?.() || 0) + 24);
+      const w = r.width - left - pad;
+      const k = Math.min(1.25, Math.max(0.15, Math.min(w / (b.x2 - b.x1 || 1), (r.height - pad * 2) / (b.y2 - b.y1 || 1))));
+      this.view = { k, x: left + w / 2 - ((b.x1 + b.x2) / 2) * k, y: r.height / 2 - ((b.y1 + b.y2) / 2) * k };
     }
     this.autoFit = true;
     this.render();

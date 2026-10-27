@@ -40,6 +40,7 @@ const S = {
   model: null,
   view: store.get('view', 'split'),
   autosave: store.get('autosave', true),
+  outline: store.get('outline', true),
   dirty: false,
   editSeq: 0,
   scope: 'block',
@@ -72,11 +73,17 @@ async function init() {
     icon: (ref) => (flag('icons') ? iconStore.get(ref) : false),
     flag,
     zoom: (k) => ($('#zoom-label').textContent = Math.round(k * 100) + '%'),
+    insetLeft: () => {
+      const p = $('#palette');
+      return p.hidden ? 0 : p.offsetLeft + p.offsetWidth;
+    },
   });
   window.mermdraw = { S, canvas }; // handy from the devtools console
   buildPalette();
+  new ResizeObserver(fitPalette).observe($('#canvas-wrap'));
   bindUI();
   initTooltips();
+  setOutline(S.outline);
   setView(S.view);
   $('#autosave').checked = S.autosave;
   try {
@@ -229,6 +236,7 @@ function applyToDoc() {
 function updateModeUI() {
   const flow = !!S.model;
   $('#palette').hidden = !flow;
+  fitPalette();
   $$('#views button').forEach((b) => (b.disabled = !flow && (b.dataset.view === 'canvas' || b.dataset.view === 'split')));
   setView(S.view);
 }
@@ -253,6 +261,21 @@ function setView(v) {
   }
 }
 let docDirty = false;
+
+/** Shows or hides the outline sidebar; `animate` slides it (only for user toggles, not on load). */
+function setOutline(open, animate = false) {
+  S.outline = open;
+  store.set('outline', open);
+  const main = $('.main');
+  main.classList.toggle('anim', animate);
+  main.classList.toggle('side-closed', !open);
+  $('#side').inert = !open;
+  const b = $('#side-toggle');
+  const label = open ? 'Hide outline' : 'Show outline';
+  b.dataset.tip = label;
+  b.setAttribute('aria-label', label);
+  b.setAttribute('aria-expanded', String(open));
+}
 
 // ------------------------------------------------------------------ outline
 
@@ -1050,6 +1073,7 @@ function updateBack() {
   const prev = S.nav.at(-1);
   $('#back').hidden = !prev;
   $('#back span').textContent = prev ? prev.title : '';
+  fitPalette(); // the palette makes room for the back button
 }
 
 function updateUrl() {
@@ -1095,6 +1119,18 @@ function buildPalette() {
       e.dataTransfer.effectAllowed = 'copy';
     });
     b.addEventListener('click', () => canvas.addShape(b.dataset.shape, null));
+  }
+  fitPalette();
+}
+
+/** Adds palette columns (up to three) while one column doesn't fit the canvas's height. */
+function fitPalette() {
+  const el = $('#palette');
+  el.classList.remove('cols');
+  if (el.hidden) return;
+  for (let n = 2; n <= 3 && el.scrollHeight > el.clientHeight + 1; n++) {
+    el.classList.add('cols');
+    el.style.setProperty('--cols', n);
   }
 }
 
@@ -1274,6 +1310,7 @@ function bindUI() {
     applyTheme(next);
   });
   $('#help').addEventListener('click', () => ($('#help-modal').hidden = false));
+  $('#side-toggle').addEventListener('click', () => setOutline(!S.outline, true));
   $('#add-diagram').addEventListener('click', () => {
     const f = $('#new-form');
     f.hidden = !f.hidden;
@@ -1368,6 +1405,10 @@ function bindUI() {
     if (e.altKey && !mod && /^Digit[1-4]$/.test(e.code)) {
       e.preventDefault();
       return setView(['canvas', 'split', 'preview', 'doc'][+e.code.slice(5) - 1]);
+    }
+    if (mod && e.key === '\\') {
+      e.preventDefault();
+      return setOutline(!S.outline, true);
     }
     if (e.key === 'Escape') $$('.modal').forEach((m) => (m.hidden = true));
     if (typing(e.target)) return;
