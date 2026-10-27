@@ -3,7 +3,8 @@
 An addon is a separate program, `mermdraw-NAME`, that `mermdraw NAME` runs. Addons can use any language and any
 dependencies, so the core stays one std-only binary. They read and write diagrams only through the core's `--json`
 commands, so mermdraw stays the only program that edits markdown, with one fence scanner, one atomic write path and
-one conflict check. [mermdraw-mcp](https://github.com/berttoli/mermdraw-mcp) is the reference addon.
+one conflict check. [mermdraw-mcp](https://github.com/berttoli/mermdraw-mcp) is the reference addon. The contract
+first shipped in mermdraw 0.2.0, as `"contract": 1`.
 
 This page is a public API: what it describes is covered by mermdraw's compatibility promise (see
 [Stability](#stability) and [RELEASING.md](RELEASING.md#versioning)).

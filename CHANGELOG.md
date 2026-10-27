@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-27
+
+Addons, starting with [mermdraw-mcp](https://github.com/berttoli/mermdraw-mcp), which lets coding agents read and edit
+your diagrams; JSON commands for scripts and addons; and a one-line installer.
 
 - **One-line install.** `curl -fsSL https://github.com/berttoli/mermdraw/releases/latest/download/install.sh | sh` on
   macOS and Linux, and `powershell -ExecutionPolicy Bypass -c "irm …/install.ps1 | iex"` on Windows. The installer

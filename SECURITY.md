@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest release gets security fixes: 0.1.x today. To update, run the installer from the
+Only the latest release gets security fixes: 0.2.x today. To update, run the installer from the
 [README](README.md#install) again, download the release from the
 [releases page](https://github.com/berttoli/mermdraw/releases), or run
 `cargo install --git https://github.com/berttoli/mermdraw --force`.

@@ -93,8 +93,7 @@ scripts/release.sh verify dist/mermdraw-aarch64-apple-darwin.tar.gz
 ## Cutting a release
 
 1. **Prepare on `main`.**
-   - In `CHANGELOG.md`, rename `## Unreleased` to `## X.Y.Z — YYYY-MM-DD`. For the first release, fold the
-     `Unreleased` items into the existing `0.1.0` section and update its date.
+   - In `CHANGELOG.md`, rename `## Unreleased` to `## X.Y.Z — YYYY-MM-DD`.
    - Set `version = "X.Y.Z-rc.1"` in `Cargo.toml` and run `cargo build` so `Cargo.lock` follows. The tag must match
      `Cargo.toml` exactly, so every build reports the version it really is (`mermdraw --version` →
      `mermdraw X.Y.Z-rc.1`).
