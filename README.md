@@ -87,7 +87,7 @@ sudo mv "mermdraw-$target/mermdraw" /usr/local/bin/
 ```
 
 `latest` skips pre-releases. To try a release candidate, put its tag in the URL instead, e.g.
-`https://github.com/berttoli/mermdraw/releases/download/v0.1.0-rc.2/mermdraw-$target.tar.gz`, or grab it from the
+`https://github.com/berttoli/mermdraw/releases/download/v0.1.0-rc.3/mermdraw-$target.tar.gz`, or grab it from the
 [releases page](https://github.com/berttoli/mermdraw/releases); `mermdraw --version` tells you which build you have.
 
 On Windows, download `mermdraw-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a

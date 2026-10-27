@@ -1,6 +1,6 @@
 [package]
 name = "mermdraw"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 edition = "2021"
 description = "A tiny local visual editor for mermaid diagrams that live inside markdown files"
 license = "MIT"
