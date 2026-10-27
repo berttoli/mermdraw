@@ -1,13 +1,13 @@
 # Northwind Technology — IT organization & architecture
 
 A worked example of a whole IT organization documented as code. **L1** (this file) uses only
-mermaid's default shapes plus a theme, so it renders the same in mmdr, on GitHub and anywhere else
+mermaid's default shapes plus a theme, so it renders the same in mermdraw, on GitHub and anywhere else
 mermaid runs. Each L1 box with a **thick border** has an **L2** drill-down with the concrete
 products and runtimes, drawn with icon packs:
 
 ```bash
-mmdr icons add logos devicon      # once per machine (or --vendor to commit them with the repo)
-mmdr examples/it-org/README.md    # ⌘-click a thick-bordered box to drill into its L2
+mermdraw icons add logos devicon      # once per machine (or --vendor to commit them with the repo)
+mermdraw examples/it-org/README.md    # ⌘-click a thick-bordered box to drill into its L2
 ```
 
 | L2 | What it shows |

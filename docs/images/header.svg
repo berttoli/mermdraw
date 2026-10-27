@@ -61,7 +61,7 @@
     <rect x="18" y="19" width="12" height="9" rx="2" class="accent"/>
     <path d="M8 13v7a3 3 0 0 0 3 3h7" fill="none" style="stroke: var(--accent)" stroke-width="2.4"/>
   </g>
-  <text x="140" y="124" class="ink" font-size="62" font-weight="800" letter-spacing="-1.5">mmdr</text>
+  <text x="140" y="124" class="ink" font-size="62" font-weight="800" letter-spacing="-1.5">mermdraw</text>
   <text x="72" y="180" class="ink" font-size="23" font-weight="600">Drag-and-drop mermaid diagrams that live</text>
   <text x="72" y="210" class="muted" font-size="23" font-weight="500">in your markdown and your git history.</text>
 
@@ -89,7 +89,7 @@
     <text x="640" y="176">web <tspan class="ar">--&gt;</tspan> api</text>
     <text x="640" y="197">api <tspan class="ar">--&gt;</tspan> db[(Postgres)]</text>
     <text x="640" y="218">api <tspan class="ar">-.-&gt;</tspan> queue</text>
-    <text x="640" y="239" class="cm">%% mmdr:layout …</text>
+    <text x="640" y="239" class="cm">%% mermdraw:layout …</text>
     <text x="622" y="258" class="cm">```</text>
   </g>
 

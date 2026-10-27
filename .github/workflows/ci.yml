@@ -42,7 +42,7 @@ jobs:
         run: cargo build --release --locked
       - name: Smoke test (CLI + HTTP API)
         if: runner.os != 'Windows'
-        run: tests/smoke.sh target/release/mmdr
+        run: tests/smoke.sh target/release/mermdraw
 
   web:
     name: Web model · Node ${{ matrix.node }}
@@ -74,5 +74,5 @@ jobs:
       - name: Build, package and verify the release archive
         run: |
           cargo build --release --locked --target x86_64-unknown-linux-musl
-          scripts/release.sh package x86_64-unknown-linux-musl target/x86_64-unknown-linux-musl/release/mmdr dist
-          scripts/release.sh verify dist/mmdr-x86_64-unknown-linux-musl.tar.gz
+          scripts/release.sh package x86_64-unknown-linux-musl target/x86_64-unknown-linux-musl/release/mermdraw dist
+          scripts/release.sh verify dist/mermdraw-x86_64-unknown-linux-musl.tar.gz

@@ -1,4 +1,4 @@
-# Lucidchart & Miro → mmdr: feature research and flag roadmap
+# Lucidchart & Miro → mermdraw: feature research and flag roadmap
 
 *Researched 2026-10-26 from vendor product pages, help-center articles and community posts (sources at the end). Vendor
 pages describe features, not quality, so treat the "what they offer" column as claims.*
@@ -13,13 +13,13 @@ Lucidchart and Miro pull ahead of plain diagram-as-code in four areas:
    from cloud accounts (Lucidscale).
 4. **Presenting and collaborating:** presentation mode, comments, hotspots/actions, accessibility checks, AI assistants.
 
-mmdr's constraint is also its advantage: the source of truth is plain mermaid in git. So every candidate feature below
-is classified by **how it is stored**:
+mermdraw's constraint is also its advantage: the source of truth is plain mermaid in git. So every candidate feature
+below is classified by **how it is stored**:
 
 | Storage class | Meaning | GitHub / other renderers |
 | --- | --- | --- |
 | **Portable** | Expressed in real mermaid syntax (shapes, `classDef`, frontmatter `config`) | Renders everywhere |
-| **Enhanced** | Kept in mermaid comments (`%% mmdr:…`) or packs installed locally | Degrades gracefully: the diagram still renders, the extra is ignored |
+| **Enhanced** | Kept in mermaid comments (`%% mermdraw:…`) or packs installed locally | Degrades gracefully: the diagram still renders, the extra is ignored |
 | **Tool-only** | Editor behaviour; nothing is written to the file | n/a |
 
 Four flags shipped with this research so they can be tried immediately (open **⚗ Labs** in the editor):
@@ -76,16 +76,16 @@ opens that diagram, and a **← back** chip returns to the L1.
 
 Effort: **S** ≈ a day, **M** ≈ a few days, **L** ≈ a week or more.
 
-| Flag | Inspired by | What it would do in mmdr | Storage | Effort |
+| Flag | Inspired by | What it would do in mermdraw | Storage | Effort |
 | --- | --- | --- | --- | --- |
-| `shape-data` | Lucid custom shape data, Miro metadata | Key/value table per node in the inspector (owner, tier, status, cost) | Enhanced: `%% mmdr:data api owner=payments tier=1` | M |
+| `shape-data` | Lucid custom shape data, Miro metadata | Key/value table per node in the inspector (owner, tier, status, cost) | Enhanced: `%% mermdraw:data api owner=payments tier=1` | M |
 | `conditional-format` | Lucid conditional formatting | Rules like `status = deprecated → red dashed` compiled to `classDef` + `class` lines | Portable output | M |
 | `smart-containers` | Lucid Smart Containers | Re-group nodes into subgraphs by a data field (team, domain, environment) | Portable output | M |
 | `layers` | Lucid layers, Miro diagram layers | Tag nodes `current` / `future` / `security`; toggle visibility; preview renders only visible layers | Enhanced (class tags) | M |
 | `semantic-zoom` | Miro high-level ↔ detailed views | Zooming into an L1 node that links to an L2 renders the L2 inside it, without leaving the L1 | Tool-only | L |
-| `csv-import` | Lucid data linking, Miro CSV org charts | `mmdr import org.csv` → org chart / landscape; `--refresh` keeps positions | Portable output | M |
-| `cloud-import` | Lucidscale, Cloud Accelerator | `mmdr import terraform` (from `terraform show -json`) or `gcloud asset` exports → an L2 diagram with icons; re-run to show drift | Portable output | L |
-| `custom-icons` | Lucid custom libraries, Miro custom shapes | `mmdr icons import ./brand-svgs --name acme` builds an Iconify pack from a folder of SVGs | Enhanced | S |
+| `csv-import` | Lucid data linking, Miro CSV org charts | `mermdraw import org.csv` → org chart / landscape; `--refresh` keeps positions | Portable output | M |
+| `cloud-import` | Lucidscale, Cloud Accelerator | `mermdraw import terraform` (from `terraform show -json`) or `gcloud asset` exports → an L2 diagram with icons; re-run to show drift | Portable output | L |
+| `custom-icons` | Lucid custom libraries, Miro custom shapes | `mermdraw icons import ./brand-svgs --name acme` builds an Iconify pack from a folder of SVGs | Enhanced | S |
 | `format-painter` | Lucid/Miro style copy | Copy fill/stroke/class from one node, paste onto others | Portable output | S |
 | `smart-lines` | Lucid Smart Lines | Obstacle-avoiding orthogonal routing on the canvas (mermaid already has `curve: step`) | Tool-only | M |
 | `line-jumps` | Lucid line jumps | Arcs where connectors cross (canvas only; mermaid can't express them) | Tool-only | S |
@@ -144,13 +144,13 @@ outputs are ordinary `classDef`/`subgraph` statements. Layers and semantic zoom 
 canvas. The importers come last: they are the most valuable for keeping docs true to production, but they need the
 data model to be in place first.
 
-## How flags work in mmdr
+## How flags work in mermdraw
 
 - **Registry:** `web/flags.js` lists every flag with a stage (`experimental` ships off, `beta` ships on), a description
   and its inspiration.
-- **Precedence (later wins):** built-in default → project `.mmdr/config.json` (`{"flags": {"themes": true}}`) → command
-  line (`mmdr --enable themes,smart-guides`, `--disable icons`) → this browser (Labs panel, stored in localStorage). The
-  Labs panel shows where each value comes from and can reset a personal override.
+- **Precedence (later wins):** built-in default → project `.mermdraw/config.json` (`{"flags": {"themes": true}}`) →
+  command line (`mermdraw --enable themes,smart-guides`, `--disable icons`) → this browser (Labs panel, stored in
+  localStorage). The Labs panel shows where each value comes from and can reset a personal override.
 - **Lifecycle:** experimental → beta (default on, can still be disabled) → graduated (the flag is deleted and the code
   path becomes normal) or removed (code deleted). A flag shouldn't sit in beta for more than a couple of releases.
 - **Graduation checklist** for each flag:
@@ -162,13 +162,13 @@ data model to be in place first.
 
 ## Notes on portability
 
-- **Icons:** `@{ icon: … }` nodes need mermaid ≥ 11.3 *and* registered icon packs. mmdr registers the installed packs
-  for its preview. GitHub offers no way to register packs, so expect mermaid's placeholder icon there (labels and
+- **Icons:** `@{ icon: … }` nodes need mermaid ≥ 11.3 *and* registered icon packs. mermdraw registers the installed
+  packs for its preview. GitHub offers no way to register packs, so expect mermaid's placeholder icon there (labels and
   structure still render). That is why the example keeps L1 to classic shapes and puts icons in L2.
 - **Themes:** frontmatter `config` needs mermaid ≥ 10.5. Avoid frontmatter `title:` with light `base` palettes, because
   it is drawn in `primaryTextColor` and disappears in GitHub's dark mode.
-- **Layout:** mermaid has no manual positions. mmdr keeps canvas positions in a `%% mmdr:layout` comment and the preview
-  shows mermaid's own layout, which is exactly what other renderers will draw.
+- **Layout:** mermaid has no manual positions. mermdraw keeps canvas positions in a `%% mermdraw:layout` comment and the
+  preview shows mermaid's own layout, which is exactly what other renderers will draw.
 
 ## Sources
 
@@ -184,4 +184,4 @@ data model to be in place first.
 - Miro layers announcement — https://community.miro.com/ideas/layers-93
 - Miro presentation mode — https://help.miro.com/hc/articles/34307373858450-Presentation-mode
 - draw.io app by Miro (smart containers, metadata, tags) — https://community.miro.com/product-news-31/draw-io-app-by-miro-14796
-- Iconify packs used by mmdr — `@iconify-json/logos` 1.2.16 (CC0-1.0), `@iconify-json/devicon` 1.2.71 (MIT)
+- Iconify packs used by mermdraw — `@iconify-json/logos` 1.2.16 (CC0-1.0), `@iconify-json/devicon` 1.2.71 (MIT)

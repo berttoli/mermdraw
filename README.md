@@ -1,32 +1,32 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/header-dark.png">
-    <img alt="mmdr — drag-and-drop mermaid diagrams that live in your markdown and your git history" src="docs/images/header-light.png" width="100%">
+    <img alt="mermdraw — drag-and-drop mermaid diagrams that live in your markdown and your git history" src="docs/images/header-light.png" width="100%">
   </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/berttoli/mmdr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/berttoli/mmdr/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/berttoli/mermdraw/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/berttoli/mermdraw/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Dependencies: 0" src="https://img.shields.io/badge/dependencies-0-brightgreen.svg">
   <img alt="mermaid 11.17" src="https://img.shields.io/badge/mermaid-11.17-ff3670.svg">
 </p>
 
-**mmdr** is a tiny local editor for the mermaid diagrams inside your markdown. Point it at a file, drag boxes
+**mermdraw** is a tiny local editor for the mermaid diagrams inside your markdown. Point it at a file, drag boxes
 around, connect them, drop in logos, and every change is written straight back into the ```` ```mermaid ```` block, ready
 to commit and review like any other change. It's a draw.io / Miro-style canvas that keeps your architecture as
 plain text in your repo.
 
 ```bash
-mmdr docs/architecture.md        # opens the editor in your browser
+mermdraw docs/architecture.md        # opens the editor in your browser
 ```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
-  <img alt="The mmdr canvas editing an L2 architecture diagram with product icons, the node inspector and the generated mermaid" src="docs/images/hero-light.png">
+  <img alt="The mermdraw canvas editing an L2 architecture diagram with product icons, the node inspector and the generated mermaid" src="docs/images/hero-light.png">
 </picture>
 
-> **Status: 0.1, early.** Expect rough edges. [Issues](https://github.com/berttoli/mmdr/issues) and ideas are welcome.
+> **Status: 0.1, early.** Expect rough edges. [Issues](https://github.com/berttoli/mermdraw/issues) and ideas welcome.
 
 ## Features
 
@@ -51,12 +51,12 @@ mmdr docs/architecture.md        # opens the editor in your browser
 - Only the block you edit changes. Prose, other blocks, line endings and indentation are left alone. `.md` and
   `.mmd` both work.
 - Autosave (or <kbd>⌘S</kbd>) with atomic writes. Edits made in vim or VS Code reload live, and if both sides changed
-  the file, mmdr re-applies your diagram on top of theirs instead of overwriting them.
+  the file, mermdraw re-applies your diagram on top of theirs instead of overwriting them.
 - Stable, canonical output with readable ids (`Auth Service` → `authService`). Canvas positions live in a single
-  `%% mmdr:layout` comment that mermaid ignores.
+  `%% mermdraw:layout` comment that mermaid ignores.
 
 **Architecture tooling: L1 → L2**
-- **Icon packs:** `mmdr icons add logos devicon` installs ~3,300 open-licensed logos (Python, Rust, nginx, Postgres,
+- **Icon packs:** `mermdraw icons add logos devicon` installs ~3,300 open-licensed logos (Python, Rust, nginx, Postgres,
   Kubernetes, Cloud Run, Okta, Grafana, Proxmox…), globally or vendored into the repo. Find them with a searchable picker.
 - **Drill-down:** link a node to another diagram (`./l2-platform.md#2`). <kbd>⌘</kbd>-click drills in, and a
   **← back** chip (<kbd>⌘[</kbd>) returns.
@@ -76,52 +76,52 @@ mmdr docs/architecture.md        # opens the editor in your browser
 
 ## Install
 
-Download a binary from the [releases page](https://github.com/berttoli/mmdr/releases). The Linux builds are static
+Download a binary from the [releases page](https://github.com/berttoli/mermdraw/releases). The Linux builds are static
 and run on any distro. Asset names don't change between versions, so this always fetches the latest stable release:
 
 ```bash
 # pick yours: aarch64-apple-darwin, x86_64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
 target=aarch64-apple-darwin
-curl -fsSL "https://github.com/berttoli/mmdr/releases/latest/download/mmdr-$target.tar.gz" | tar xz
-sudo mv "mmdr-$target/mmdr" /usr/local/bin/
+curl -fsSL "https://github.com/berttoli/mermdraw/releases/latest/download/mermdraw-$target.tar.gz" | tar xz
+sudo mv "mermdraw-$target/mermdraw" /usr/local/bin/
 ```
 
 `latest` skips pre-releases. To try a release candidate, put its tag in the URL instead, e.g.
-`https://github.com/berttoli/mmdr/releases/download/v0.1.0-rc.2/mmdr-$target.tar.gz`, or grab it from the
-[releases page](https://github.com/berttoli/mmdr/releases); `mmdr --version` tells you which build you have.
+`https://github.com/berttoli/mermdraw/releases/download/v0.1.0-rc.2/mermdraw-$target.tar.gz`, or grab it from the
+[releases page](https://github.com/berttoli/mermdraw/releases); `mermdraw --version` tells you which build you have.
 
-On Windows, download `mmdr-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
-signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mmdr`). If macOS refuses to open a
-binary downloaded in a browser, run `xattr -d com.apple.quarantine mmdr`.
+On Windows, download `mermdraw-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
+signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mermdraw`). If macOS refuses to open a
+binary downloaded in a browser, run `xattr -d com.apple.quarantine mermdraw`.
 
 Or build it with Rust:
 
 ```bash
-cargo install --git https://github.com/berttoli/mmdr
+cargo install --git https://github.com/berttoli/mermdraw
 ```
 
 Optional, for L2 diagrams with product logos:
 
 ```bash
-mmdr icons add logos devicon            # into ~/.config/mmdr/icons, available everywhere
-mmdr icons add logos --vendor           # or into this repo's .mmdr/icons so teammates get them too
+mermdraw icons add logos devicon            # into ~/.config/mermdraw/icons, available everywhere
+mermdraw icons add logos --vendor           # or into this repo's .mermdraw/icons so teammates get them too
 ```
 
 ## Quick start
 
 ```bash
-mmdr new docs/architecture.md --title "System overview"   # creates the file with a starter flowchart
-mmdr docs/architecture.md                                  # edit it in the browser; changes save as you go
-git diff docs/architecture.md                              # review it like any other change
+mermdraw new docs/architecture.md --title "System overview"   # creates the file with a starter flowchart
+mermdraw docs/architecture.md                                  # edit it in the browser; changes save as you go
+git diff docs/architecture.md                                  # review it like any other change
 ```
 
-Then try the [IT organization example](examples/it-org/README.md): `mmdr examples/it-org/README.md` and ⌘-click a
+Then try the [IT organization example](examples/it-org/README.md): `mermdraw examples/it-org/README.md` and ⌘-click a
 thick-bordered box to drill from the L1 landscape into an L2.
 
 ## Examples
 
 **What a canvas edit writes.** Starting from a hand-written block, drag the nodes around and press <kbd>Tab</kbd> on
-`Orders service` to add a cache. mmdr rewrites the block like this:
+`Orders service` to add a cache. mermdraw rewrites the block like this:
 
 ````markdown
 ```mermaid
@@ -135,7 +135,7 @@ graph LR
     api --> svc
     svc --> db
     svc -->|sessions| redisCache
-    %% mmdr:layout client:0,0 api:200,0 svc:400,0 db:600,-60 redisCache:600,60
+    %% mermdraw:layout client:0,0 api:200,0 svc:400,0 db:600,-60 redisCache:600,60
 ```
 ````
 
@@ -198,7 +198,7 @@ flowchart TD
 ```
 ````
 
-**Team defaults** for experiments go in `.mmdr/config.json`:
+**Team defaults** for experiments go in `.mermdraw/config.json`:
 
 ```json
 { "flags": { "themes": true, "smart-guides": true } }
@@ -207,9 +207,9 @@ flowchart TD
 **Scripting** from the terminal or CI:
 
 ```bash
-mmdr ls docs/architecture.md                       # inventory: index, type, line range, title
-mmdr cat docs/architecture.md 2 > checkout.mmd     # extract one diagram's source
-mmdr new docs/adr/0042.md -t sequence --title "Token refresh"
+mermdraw ls docs/architecture.md                       # inventory: index, type, line range, title
+mermdraw cat docs/architecture.md 2 > checkout.mmd     # extract one diagram's source
+mermdraw new docs/adr/0042.md -t sequence --title "Token refresh"
 ```
 
 ## Reference
@@ -218,16 +218,16 @@ mmdr new docs/adr/0042.md -t sequence --title "Token refresh"
 <summary><b>Command line</b></summary>
 
 ```
-mmdr [PATH]                  open a .md/.mmd file or a directory (default: .)
-mmdr ls FILE                 list the diagrams in FILE
-mmdr cat FILE [N]            print diagram N's source
-mmdr new FILE [-t TYPE] [--title TITLE]
+mermdraw [PATH]              open a .md/.mmd file or a directory (default: .)
+mermdraw ls FILE             list the diagrams in FILE
+mermdraw cat FILE [N]        print diagram N's source
+mermdraw new FILE [-t TYPE] [--title TITLE]
                              append a diagram (flowchart, sequence, class, state, er,
                              architecture, c4, gantt, mindmap); creates FILE if needed
-mmdr icons [ls]              list installed icon packs
-mmdr icons add PACK[@VER]... [--vendor]
+mermdraw icons [ls]          list installed icon packs
+mermdraw icons add PACK[@VER]... [--vendor]
                              install Iconify packs (logos, devicon, simple-icons, mdi, …)
-mmdr icons rm PACK... [--vendor]
+mermdraw icons rm PACK... [--vendor]
 
   -p, --port N               default 7788 (next free port if taken)
       --no-open              don't open a browser
@@ -261,7 +261,7 @@ in the repo and links between files work. Opening a directory serves that direct
 | <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>, <kbd>⌘S</kbd> | undo / redo, save now |
 | <kbd>⌥1</kbd>–<kbd>⌥4</kbd>, <kbd>?</kbd> | Canvas / Split / Preview / Markdown view, shortcut help |
 
-Statements mmdr doesn't model on the canvas (comments, `accTitle`, click callbacks…) are kept verbatim.
+Statements mermdraw doesn't model on the canvas (comments, `accTitle`, click callbacks…) are kept verbatim.
 
 </details>
 
@@ -269,7 +269,7 @@ Statements mmdr doesn't model on the canvas (comments, `accTitle`, click callbac
 <summary><b>Labs: features behind flags</b></summary>
 
 Experiments ship behind feature flags so they can be tried and iterated on. Toggle them for yourself under **⚗ Labs**,
-set team defaults in `.mmdr/config.json`, or per run with `mmdr --enable themes,smart-guides`.
+set team defaults in `.mermdraw/config.json`, or per run with `mermdraw --enable themes,smart-guides`.
 
 | Flag | Stage | What it does |
 | --- | --- | --- |
@@ -286,8 +286,8 @@ layers, semantic L1→L2 zoom, cloud import, presentation mode), is in
 
 ## Things to know
 
-- **Positions are mmdr-only.** Mermaid has no syntax for manual coordinates, so mmdr keeps them in a
-  `%% mmdr:layout` comment. GitHub and every other renderer still draw mermaid's automatic layout, which the Preview
+- **Positions are mermdraw-only.** Mermaid has no syntax for manual coordinates, so mermdraw keeps them in a
+  `%% mermdraw:layout` comment. GitHub and every other renderer still draw mermaid's automatic layout, which the Preview
   pane shows exactly. Diagrams you never move on the canvas get no layout comment.
 - **Canvas edits rewrite the block in canonical form** (declarations, subgraphs, edges, then styles). Edits in the code
   pane are kept exactly as typed.
@@ -303,7 +303,7 @@ Rust (pinned in `rust-toolchain.toml`) and Node ≥ 22 for the JS tests; no othe
 cargo test                                  # Rust unit tests (fence scanner, icon packs)
 npm test                                    # parser / serializer / example round-trip tests (no npm deps)
 cargo build --release && tests/smoke.sh     # end-to-end: CLI commands + HTTP API of the real binary
-MMDR_WEB=web cargo run -- examples          # serve web/ from disk: edit JS/CSS, reload the page
+MERMDRAW_WEB=web cargo run -- examples      # serve web/ from disk: edit JS/CSS, reload the page
 node scripts/screenshots.mjs                # regenerate the README images with headless Chrome
 ./scripts/update-mermaid.sh 11.17.2         # re-vendor mermaid
 ```

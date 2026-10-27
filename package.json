@@ -1,7 +1,7 @@
 {
   "private": true,
-  "name": "mmdr-web",
-  "description": "Browser half of mmdr; no dependencies, only used to run the JS tests",
+  "name": "mermdraw-web",
+  "description": "Browser half of mermdraw; no dependencies, only used to run the JS tests",
   "type": "module",
   "engines": {
     "node": ">=20"

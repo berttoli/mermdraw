@@ -82,7 +82,7 @@ export class Canvas {
     root.addEventListener('keydown', (e) => this.onKey(e));
     root.addEventListener('keyup', (e) => e.key === ' ' && (this.space = false));
     root.addEventListener('dragover', (e) => {
-      if ([...e.dataTransfer.types].some((t) => t === 'Files' || t === 'text/x-mmdr-shape')) e.preventDefault();
+      if ([...e.dataTransfer.types].some((t) => t === 'Files' || t === 'text/x-mermdraw-shape')) e.preventDefault();
     });
     root.addEventListener('drop', (e) => this.onDrop(e));
     // keep the diagram framed while the user hasn't panned/zoomed by hand
@@ -462,7 +462,7 @@ export class Canvas {
         const icon = this.hooks.icon?.(p.icon || '');
         if (icon) inner += `<svg x="${-s / 2}" y="${by + pad}" width="${s}" height="${s}" viewBox="0 0 ${icon.w} ${icon.h}">${icon.body}</svg>`;
         else {
-          inner += `<rect class="icon-missing" x="${-s / 2}" y="${by + pad}" width="${s}" height="${s}" rx="8"><title>${esc(p.icon || 'no icon')}${icon === false ? ' — not installed (mmdr icons add …)' : ''}</title></rect>`;
+          inner += `<rect class="icon-missing" x="${-s / 2}" y="${by + pad}" width="${s}" height="${s}" rx="8"><title>${esc(p.icon || 'no icon')}${icon === false ? ' — not installed (mermdraw icons add …)' : ''}</title></rect>`;
           inner += `<text class="icon-name" x="0" y="${by + pad + s / 2 + 4}">${icon === null ? '…' : esc(String(p.icon || '?').replace(/^.*:/, '').slice(0, 10))}</text>`;
         }
         if (hasLabel) inner += textLines(lines, 0, top ? -b.h / 2 + (lines.length * LINE) / 2 + 2 : b.h / 2 - (lines.length * LINE) / 2 - 1, st.get('color'));
@@ -759,7 +759,7 @@ export class Canvas {
   async onDrop(e) {
     e.preventDefault();
     const at = this.world(e);
-    const shape = e.dataTransfer.getData('text/x-mmdr-shape');
+    const shape = e.dataTransfer.getData('text/x-mermdraw-shape');
     if (shape) return this.addShape(shape, at);
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
     let i = 0;

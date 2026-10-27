@@ -6,7 +6,7 @@
 #                                             match exactly, so rc builds report their rc version),
 #                                             Cargo.lock and CHANGELOG.md; print version=/prerelease=
 #   scripts/release.sh notes VERSION          print the CHANGELOG.md section for VERSION
-#   scripts/release.sh package TARGET BIN OUT write OUT/mmdr-TARGET.tar.gz (.zip for Windows)
+#   scripts/release.sh package TARGET BIN OUT write OUT/mermdraw-TARGET.tar.gz (.zip for Windows)
 #   scripts/release.sh verify ARCHIVE         unpack ARCHIVE and smoke-test the binary inside
 set -euo pipefail
 
@@ -23,7 +23,7 @@ cargo_version() {
 }
 
 lock_version() {
-  awk '/^name = "mmdr"$/ { found = 1; next } found && /^version = / { gsub(/"/, "", $3); print $3; exit }' "$ROOT/Cargo.lock"
+  awk '/^name = "mermdraw"$/ { found = 1; next } found && /^version = / { gsub(/"/, "", $3); print $3; exit }' "$ROOT/Cargo.lock"
 }
 
 cmd_check() {
@@ -33,7 +33,7 @@ cmd_check() {
   local cargo lock
   cargo="$(cargo_version)"
   lock="$(lock_version)"
-  # exact match: `mmdr --version` of a v0.2.0-rc.1 build must say 0.2.0-rc.1
+  # exact match: `mermdraw --version` of a v0.2.0-rc.1 build must say 0.2.0-rc.1
   [[ "$cargo" == "$version" ]] || die "Cargo.toml says $cargo but the tag is $tag (set version = \"$version\")"
   [[ "$lock" == "$cargo" ]] || die "Cargo.lock says $lock but Cargo.toml says $cargo (run cargo build)"
   grep -Eq "^## ${base//./\\.}( |\$)" "$ROOT/CHANGELOG.md" || die "CHANGELOG.md has no '## $base' section"
@@ -56,7 +56,7 @@ cmd_notes() {
 cmd_package() {
   local target="${1:?usage: release.sh package TARGET BIN OUT}" bin="${2:?}" out="${3:?}"
   [[ -f "$bin" ]] || die "no binary at $bin"
-  local name="mmdr-$target" stage
+  local name="mermdraw-$target" stage
   stage="$(mktemp -d)"
   mkdir -p "$stage/$name" "$out"
   out="$(cd "$out" && pwd)"
@@ -92,14 +92,14 @@ cmd_verify() {
   esac
 
   local unexpected
-  unexpected="$( (cd "$dir" && find . -mindepth 1) | grep -vE "^\./$name(/(mmdr|mmdr\.exe|README\.md|LICENSE|CHANGELOG\.md))?\$" || true)"
+  unexpected="$( (cd "$dir" && find . -mindepth 1) | grep -vE "^\./$name(/(mermdraw|mermdraw\.exe|README\.md|LICENSE|CHANGELOG\.md))?\$" || true)"
   [[ -z "$unexpected" ]] || die "unexpected files in $file: $unexpected"
   for f in README.md LICENSE CHANGELOG.md; do
     [[ -f "$dir/$name/$f" ]] || die "$f missing from $file"
   done
-  local bin="$dir/$name/mmdr"
+  local bin="$dir/$name/mermdraw"
   [[ -f "$bin.exe" ]] && bin="$bin.exe"
-  [[ -f "$bin" ]] || die "no mmdr binary in $file"
+  [[ -f "$bin" ]] || die "no mermdraw binary in $file"
   echo "ok   $file contains the binary, README, LICENSE and CHANGELOG"
 
   if [[ "$name" == *linux-musl* ]]; then
@@ -115,15 +115,15 @@ cmd_verify() {
   fi
 
   local expected out
-  expected="mmdr $(cargo_version)"
+  expected="mermdraw $(cargo_version)"
   out="$("$bin" --version)"
   [[ "$out" == "$expected" ]] || die "--version printed '$out', expected '$expected'"
   echo "ok   $out"
 
   if [[ "$bin" == *.exe ]]; then
     out="$("$bin" ls "$ROOT/examples/architecture.md")"
-    [[ "$out" == *"3 diagrams"* ]] || die "mmdr ls failed: $out"
-    echo "ok   mmdr ls"
+    [[ "$out" == *"3 diagrams"* ]] || die "mermdraw ls failed: $out"
+    echo "ok   mermdraw ls"
   else
     "$ROOT/tests/smoke.sh" "$bin"
   fi

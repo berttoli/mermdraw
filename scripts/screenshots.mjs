@@ -4,10 +4,10 @@
 // DevTools protocol. No npm dependencies (Node >= 22 for the built-in WebSocket).
 //
 //   cargo build --release
-//   mmdr icons add logos devicon        # once, so L2 screenshots show real icons
+//   mermdraw icons add logos devicon        # once, so L2 screenshots show real icons
 //   node scripts/screenshots.mjs
 //
-// Env: CHROME (path to Chrome/Chromium), MMDR_BIN (default target/release/mmdr).
+// Env: CHROME (path to Chrome/Chromium), MERMDRAW_BIN (default target/release/mermdraw).
 
 import { spawn } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'docs', 'images');
-const BIN = process.env.MMDR_BIN || join(ROOT, 'target', 'release', 'mmdr');
+const BIN = process.env.MERMDRAW_BIN || join(ROOT, 'target', 'release', 'mermdraw');
 const CHROME = process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -33,7 +33,7 @@ if (!CHROME) throw new Error('Chrome not found; set CHROME=/path/to/chrome');
 if (!existsSync(BIN)) throw new Error(`${BIN} not found; run cargo build --release`);
 
 // ---------------------------------------------------------------- processes
-const work = mkdtempSync(join(tmpdir(), 'mmdr-shots-'));
+const work = mkdtempSync(join(tmpdir(), 'mermdraw-shots-'));
 cpSync(join(ROOT, 'examples'), join(work, 'docs'), { recursive: true });
 const procs = [
   spawn(BIN, [join(work, 'docs'), '--no-open', '--port', String(APP_PORT)], { stdio: 'ignore' }),
@@ -93,7 +93,7 @@ async function connect() {
 }
 
 const page = await connect();
-await retry(() => fetch(`http://127.0.0.1:${APP_PORT}/api/info`).then((r) => r.json()), 'mmdr');
+await retry(() => fetch(`http://127.0.0.1:${APP_PORT}/api/info`).then((r) => r.json()), 'mermdraw');
 const packs = (await (await fetch(`http://127.0.0.1:${APP_PORT}/api/icons`)).json()).packs.map((p) => p.name);
 if (!packs.includes('logos')) console.warn('warning: `logos` icon pack not installed; L2 shots will show placeholders');
 
@@ -115,9 +115,9 @@ const APP = (file, d = 1) => `http://127.0.0.1:${APP_PORT}/?file=${file}#d=${d}`
 const prelude = `
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const $ = (s) => document.querySelector(s);
-  for (let i = 0; i < 100 && !(window.mmdr?.S?.model || window.mmdr?.S?.kind); i++) await sleep(100);
+  for (let i = 0; i < 100 && !(window.mermdraw?.S?.model || window.mermdraw?.S?.kind); i++) await sleep(100);
   await sleep(1200);
-  const { canvas, S } = window.mmdr;
+  const { canvas, S } = window.mermdraw;
   const flags = await import('/flags.js');
   for (const f of flags.FLAGS) flags.setFlag(f.id, undefined);
   const view = async (v) => { $('[data-view="' + v + '"]').click(); await sleep(900); };
@@ -139,7 +139,7 @@ await shoot('social-preview.png', {
     svg.setAttribute('height', '640');
     const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     Object.entries({ x: 72, y: 440, class: 'muted', 'font-size': 22, 'font-weight': 600 }).forEach(([k, v]) => t.setAttribute(k, v));
-    t.textContent = 'github.com/berttoli/mmdr';
+    t.textContent = 'github.com/berttoli/mermdraw';
     svg.appendChild(t);`,
 });
 

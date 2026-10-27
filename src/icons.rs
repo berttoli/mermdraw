@@ -1,5 +1,5 @@
-//! Iconify icon packs (`mmdr icons add|ls|rm`). Packs live in a global cache
-//! (~/.config/mmdr/icons) or are vendored into a repository (.mmdr/icons) so
+//! Iconify icon packs (`mermdraw icons add|ls|rm`). Packs live in a global cache
+//! (~/.config/mermdraw/icons) or are vendored into a repository (.mermdraw/icons) so
 //! everyone who opens the docs sees the same icons. A project copy wins.
 
 use std::env;
@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Releases mmdr was tested with; other sets resolve to their latest release.
+/// Releases mermdraw was tested with; other sets resolve to their latest release.
 const PINNED: &[(&str, &str)] = &[("logos", "1.2.16"), ("devicon", "1.2.71")];
 
 pub struct Pack {
@@ -23,11 +23,11 @@ pub fn global_dir() -> Option<PathBuf> {
         None if cfg!(windows) => PathBuf::from(env::var_os("APPDATA")?),
         None => PathBuf::from(env::var_os("HOME")?).join(".config"),
     };
-    Some(base.join("mmdr").join("icons"))
+    Some(base.join("mermdraw").join("icons"))
 }
 
 pub fn project_dir(root: &Path) -> PathBuf {
-    root.join(".mmdr").join("icons")
+    root.join(".mermdraw").join("icons")
 }
 
 pub fn valid_name(n: &str) -> bool {
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn project_packs_shadow_global_ones() {
-        let root = env::temp_dir().join(format!("mmdr-icons-test-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("mermdraw-icons-test-{}", std::process::id()));
         fs::create_dir_all(project_dir(&root)).unwrap();
         fs::write(project_dir(&root).join("logos.json"), "{}").unwrap();
         fs::write(project_dir(&root).join("bad name.json"), "{}").unwrap();

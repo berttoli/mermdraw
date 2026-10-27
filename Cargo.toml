@@ -1,13 +1,13 @@
 [package]
-name = "mmdr"
+name = "mermdraw"
 version = "0.1.0-rc.2"
 edition = "2021"
 description = "A tiny local visual editor for mermaid diagrams that live inside markdown files"
 license = "MIT"
 readme = "README.md"
 authors = ["berttoli"]
-repository = "https://github.com/berttoli/mmdr"
-homepage = "https://github.com/berttoli/mmdr"
+repository = "https://github.com/berttoli/mermdraw"
+homepage = "https://github.com/berttoli/mermdraw"
 keywords = ["mermaid", "diagram", "markdown", "architecture", "editor"]
 categories = ["command-line-utilities", "visualization"]
 # the binary embeds web/; tests and examples stay in the repo only

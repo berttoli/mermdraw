@@ -1,5 +1,5 @@
 #!/bin/sh
-# Re-vendors the mermaid bundle that mmdr embeds: ./scripts/update-mermaid.sh 11.17.2
+# Re-vendors the mermaid bundle that mermdraw embeds: ./scripts/update-mermaid.sh 11.17.2
 set -eu
 v="${1:?usage: $0 MERMAID_VERSION}"
 cd "$(dirname "$0")/.."

@@ -1,4 +1,4 @@
-//! mmdr — a tiny local visual editor for mermaid diagrams that live inside markdown.
+//! mermdraw — a tiny local visual editor for mermaid diagrams that live inside markdown.
 //!
 //! The binary is std-only: it embeds the web UI (plus a gzipped mermaid bundle),
 //! serves it on 127.0.0.1, watches the files the UI has open, and writes edits
@@ -103,7 +103,7 @@ fn main() {
         };
         match a {
             "-h" | "--help" => return print_help(),
-            "-V" | "--version" => return println!("mmdr {VERSION}"),
+            "-V" | "--version" => return println!("mermdraw {VERSION}"),
             "-p" | "--port" => opts.port = Some(value().parse().unwrap_or_else(|_| die("--port needs a number"))),
             "-t" | "--type" => opts.kind = value(),
             "--title" => opts.title = Some(value()),
@@ -134,20 +134,20 @@ fn main() {
 
 fn print_help() {
     println!(
-        "mmdr {VERSION} — visual mermaid editor for markdown files
+        "mermdraw {VERSION} — visual mermaid editor for markdown files
 
 USAGE
-  mmdr [PATH]                 open the editor for a .md/.mmd file or a directory (default: .)
-  mmdr ls FILE                list the mermaid diagrams in FILE
-  mmdr cat FILE [N]           print the source of diagram N (1-based, default 1)
-  mmdr new FILE [-t TYPE] [--title TITLE]
+  mermdraw [PATH]             open the editor for a .md/.mmd file or a directory (default: .)
+  mermdraw ls FILE            list the mermaid diagrams in FILE
+  mermdraw cat FILE [N]       print the source of diagram N (1-based, default 1)
+  mermdraw new FILE [-t TYPE] [--title TITLE]
                               append a new diagram (flowchart, sequence, class, state,
                               er, architecture, c4, gantt, mindmap)
-  mmdr icons [ls]             list installed icon packs
-  mmdr icons add PACK[@VER]... [--vendor]
+  mermdraw icons [ls]         list installed icon packs
+  mermdraw icons add PACK[@VER]... [--vendor]
                               install Iconify packs (logos, devicon, simple-icons, mdi, ...)
-                              into ~/.config/mmdr/icons, or into this repo's .mmdr/icons
-  mmdr icons rm PACK... [--vendor]
+                              into ~/.config/mermdraw/icons, or into this repo's .mermdraw/icons
+  mermdraw icons rm PACK... [--vendor]
 
 OPTIONS
   -p, --port N                port to listen on (default {DEFAULT_PORT}, next free one if taken)
@@ -163,7 +163,7 @@ The editor saves straight into the markdown file; commit it like any other chang
 }
 
 fn die(msg: &str) -> ! {
-    eprintln!("mmdr: {msg}");
+    eprintln!("mermdraw: {msg}");
     process::exit(1)
 }
 
@@ -176,7 +176,7 @@ fn read_doc(path: &str) -> (String, Vec<md::Block>) {
 }
 
 fn cmd_ls(args: &[String]) {
-    let path = args.first().unwrap_or_else(|| die("usage: mmdr ls FILE"));
+    let path = args.first().unwrap_or_else(|| die("usage: mermdraw ls FILE"));
     let (_, blocks) = read_doc(path);
     println!("{path} — {} diagram{}", blocks.len(), if blocks.len() == 1 { "" } else { "s" });
     for b in &blocks {
@@ -186,7 +186,7 @@ fn cmd_ls(args: &[String]) {
 }
 
 fn cmd_cat(args: &[String]) {
-    let path = args.first().unwrap_or_else(|| die("usage: mmdr cat FILE [N]"));
+    let path = args.first().unwrap_or_else(|| die("usage: mermdraw cat FILE [N]"));
     let n: usize = args.get(1).map(|s| s.parse().unwrap_or_else(|_| die("N must be a number"))).unwrap_or(1);
     let (_, blocks) = read_doc(path);
     let b = blocks.get(n.wrapping_sub(1)).unwrap_or_else(|| die(&format!("{path} has no diagram #{n}")));
@@ -197,7 +197,7 @@ fn cmd_cat(args: &[String]) {
 }
 
 fn cmd_new(args: &[String], opts: &Opts) {
-    let path = args.first().unwrap_or_else(|| die("usage: mmdr new FILE [-t TYPE] [--title TITLE]"));
+    let path = args.first().unwrap_or_else(|| die("usage: mermdraw new FILE [-t TYPE] [--title TITLE]"));
     let tpl = md::template(&opts.kind).unwrap_or_else(|| die(&format!("unknown diagram type '{}'", opts.kind)));
     // Only a missing file counts as empty; any other read error must not lead to overwriting it.
     let existing = match fs::read_to_string(path) {
@@ -235,7 +235,7 @@ fn cmd_icons(args: &[String], opts: &Opts) {
         None | Some("ls") | Some("list") => {
             let packs = icons::installed(root.as_deref());
             if packs.is_empty() {
-                println!("no icon packs installed — try: mmdr icons add logos devicon");
+                println!("no icon packs installed — try: mermdraw icons add logos devicon");
             }
             for p in packs {
                 println!("  {:<16} {:>8}  {:<8} {}", p.name, icons::human(p.size), p.source, p.path.display());
@@ -243,7 +243,7 @@ fn cmd_icons(args: &[String], opts: &Opts) {
         }
         Some("add") => {
             if args.len() < 2 {
-                die("usage: mmdr icons add PACK[@VERSION]... [--vendor]");
+                die("usage: mermdraw icons add PACK[@VERSION]... [--vendor]");
             }
             for spec in &args[1..] {
                 match icons::add(spec, &dest) {
@@ -258,7 +258,7 @@ fn cmd_icons(args: &[String], opts: &Opts) {
                 if icons::valid_name(name) && fs::remove_file(&path).is_ok() {
                     println!("removed {}", path.display());
                 } else {
-                    eprintln!("mmdr: {name} is not installed in {}", dest.display());
+                    eprintln!("mermdraw: {name} is not installed in {}", dest.display());
                 }
             }
         }
@@ -328,7 +328,7 @@ fn serve(target: Option<&str>, opts: &Opts) {
         root,
         initial: initial.clone(),
         flags: format!("{{{flags}}}"),
-        web_dir: env::var_os("MMDR_WEB").map(PathBuf::from),
+        web_dir: env::var_os("MERMDRAW_WEB").map(PathBuf::from),
         watched: Mutex::new(HashMap::new()),
         hub: Mutex::new(Hub { seq: 0, events: Vec::new() }),
         cv: Condvar::new(),
@@ -338,7 +338,7 @@ fn serve(target: Option<&str>, opts: &Opts) {
     if let Some(f) = &initial {
         url.push_str(&format!("?file={}", url_encode(f)));
     }
-    println!("mmdr {VERSION}  root {}", state.root.display());
+    println!("mermdraw {VERSION}  root {}", state.root.display());
     println!("  → {url}   (Ctrl+C to quit)");
     if opts.open {
         open_browser(&url, opts.app);
@@ -354,7 +354,7 @@ fn serve(target: Option<&str>, opts: &Opts) {
     }
 }
 
-/// Creates the folders a new document will live in (`docs/` in `mmdr new docs/arch.md`).
+/// Creates the folders a new document will live in (`docs/` in `mermdraw new docs/arch.md`).
 fn create_parent(path: &Path) {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).unwrap_or_else(|e| die(&format!("{}: {e}", dir.display())));
@@ -405,7 +405,7 @@ fn open_browser(url: &str, app: bool) {
 }
 
 /// Polls the files the UI has opened and publishes a change event when one is
-/// modified outside mmdr (another editor, git checkout, ...).
+/// modified outside mermdraw (another editor, git checkout, ...).
 fn watch_loop(st: Arc<State>) {
     loop {
         thread::sleep(Duration::from_millis(300));
@@ -549,7 +549,7 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
         }
         ("GET", "/api/config") => {
             // project defaults for the editor (feature flags today); the browser validates it
-            let raw = fs::read_to_string(st.root.join(".mmdr").join("config.json")).ok().filter(|t| t.trim_start().starts_with('{'));
+            let raw = fs::read_to_string(st.root.join(".mermdraw").join("config.json")).ok().filter(|t| t.trim_start().starts_with('{'));
             respond(s, "200 OK", "application/json", &[], raw.as_deref().unwrap_or("{}").as_bytes())
         }
         ("GET", "/api/icons") => {
@@ -697,7 +697,7 @@ fn resolve(root: &Path, rel: &str) -> Option<PathBuf> {
 
 fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.mmdr-tmp"));
+    let tmp = path.with_file_name(format!(".{name}.mermdraw-tmp"));
     fs::write(&tmp, data)?;
     if let Ok(m) = fs::metadata(path) {
         let _ = fs::set_permissions(&tmp, m.permissions());

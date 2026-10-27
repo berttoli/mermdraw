@@ -1,6 +1,6 @@
 // flags.js — feature flags for iterating on experiments.
 //
-// Resolution (later wins): built-in default < project .mmdr/config.json
+// Resolution (later wins): built-in default < project .mermdraw/config.json
 // ({"flags": {"themes": true}}) < command line (--enable/--disable) < this
 // browser (the Labs panel). Stages: "experimental" ships off, "beta" ships on.
 
@@ -11,7 +11,7 @@ export const FLAGS = [
     stage: 'beta',
     default: true,
     inspiredBy: 'Lucidchart shape libraries · Miro shape packs',
-    desc: 'Draw installed Iconify icons (logos, devicon, …) on the canvas and pick them from a searchable library. Install packs with `mmdr icons add logos devicon`.',
+    desc: 'Draw installed Iconify icons (logos, devicon, …) on the canvas and pick them from a searchable library. Install packs with `mermdraw icons add logos devicon`.',
   },
   {
     id: 'themes',
@@ -39,7 +39,7 @@ export const FLAGS = [
   },
 ];
 
-const KEY = 'mmdr:flags';
+const KEY = 'mermdraw:flags';
 const layers = { project: {}, cli: {}, user: {} };
 const listeners = new Set();
 

@@ -1,7 +1,7 @@
 # L2 · Digital products
 
 Drill-down of **Commerce platform** from the [L1 landscape](README.md). Product logos come from the
-`logos` icon pack (`mmdr icons add logos`); without it, mermaid shows placeholder icons but keeps
+`logos` icon pack (`mermdraw icons add logos`); without it, mermaid shows placeholder icons but keeps
 the labels and structure.
 
 ```mermaid
@@ -65,5 +65,5 @@ flowchart LR
     style edge fill:#FFF9F2,stroke:#F2C9A5
     style state fill:#F2FBF6,stroke:#9FD8B9
     click events href "./l2-data-ai.md" "Consumed by the data platform"
-    %% mmdr:layout shopper:0,0 stripe:1100,260 cdn:180,0 ingress:350,0 web:540,-110 app:540,110 bff:720,0 catalog:910,-140 cart:910,0 pricing:1100,70 checkout:910,140 search:1100,-140 orders:1290,140 sessions:1290,0 events:1290,-140
+    %% mermdraw:layout shopper:0,0 stripe:1100,260 cdn:180,0 ingress:350,0 web:540,-110 app:540,110 bff:720,0 catalog:910,-140 cart:910,0 pricing:1100,70 checkout:910,140 search:1100,-140 orders:1290,140 sessions:1290,0 events:1290,-140
 ```

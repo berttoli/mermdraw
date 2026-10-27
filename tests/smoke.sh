@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# End-to-end smoke test of a built mmdr binary: terminal commands and the HTTP API.
-# usage: tests/smoke.sh [path/to/mmdr]      (default: target/release/mmdr)
+# End-to-end smoke test of a built mermdraw binary: terminal commands and the HTTP API.
+# usage: tests/smoke.sh [path/to/mermdraw]      (default: target/release/mermdraw)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN_ARG="${1:-$ROOT/target/release/mmdr}"
+BIN_ARG="${1:-$ROOT/target/release/mermdraw}"
 BIN="$(cd "$(dirname "$BIN_ARG")" && pwd)/$(basename "$BIN_ARG")"
-PORT="${MMDR_SMOKE_PORT:-7899}"
+PORT="${MERMDRAW_SMOKE_PORT:-7899}"
 U="http://127.0.0.1:$PORT"
 WORK="$(mktemp -d)"
 export XDG_CONFIG_HOME="$WORK/config" # never touch the real icon cache
@@ -41,7 +41,7 @@ status() { # METHOD URL [curl args...] -> HTTP status code
 cp -R "$ROOT/examples" "$WORK/docs"
 
 # ---------------------------------------------------------------- terminal commands
-expect "--version" "$("$BIN" --version)" "mmdr "
+expect "--version" "$("$BIN" --version)" "mermdraw "
 expect "ls lists diagrams" "$("$BIN" ls "$WORK/docs/architecture.md")" "3 diagrams"
 expect "cat prints a block" "$("$BIN" cat "$WORK/docs/architecture.md" 2)" "sequenceDiagram"
 "$BIN" new "$WORK/docs/new.md" -t er --title "Data model" >/dev/null
@@ -57,9 +57,9 @@ if "$BIN" new "$WORK/binary.md" >/dev/null 2>&1; then fail "new wrote into a fil
 cmp -s "$WORK/binary.md" "$WORK/binary.expected" || fail "new modified a file it could not read"
 pass "new leaves unreadable files untouched"
 expect "icons ls with an empty cache" "$("$BIN" icons ls)" "no icon packs installed"
-mkdir -p "$WORK/docs/.mmdr/icons"
-printf '{"prefix":"demo","icons":{"dot":{"body":"<circle r=\\"4\\"/>"}}}' >"$WORK/docs/.mmdr/icons/demo.json"
-printf '{"flags":{"sticky-notes":true}}' >"$WORK/docs/.mmdr/config.json"
+mkdir -p "$WORK/docs/.mermdraw/icons"
+printf '{"prefix":"demo","icons":{"dot":{"body":"<circle r=\\"4\\"/>"}}}' >"$WORK/docs/.mermdraw/icons/demo.json"
+printf '{"flags":{"sticky-notes":true}}' >"$WORK/docs/.mermdraw/config.json"
 expect "icons ls finds vendored packs" "$(cd "$WORK/docs" && "$BIN" icons ls)" "project"
 if "$BIN" icons add ../escape >/dev/null 2>&1; then fail "icons add accepted a path"; fi
 pass "icons add rejects bad pack names"
@@ -72,7 +72,7 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 
-expect "serves the editor" "$(curl -fs "$U/")" "<title>mmdr</title>"
+expect "serves the editor" "$(curl -fs "$U/")" "<title>mermdraw</title>"
 for a in app.js model.js canvas.js flags.js icons.js app.css; do
   [[ "$(status GET "$U/$a")" == 200 ]] || fail "asset /$a"
 done
@@ -109,7 +109,7 @@ pass "refuses paths outside the root"
 [[ "$(status PUT "$U/api/file?path=notes.txt" --data-binary x)" == 400 ]] || fail "non-markdown write should be 400"
 pass "writes markdown files only"
 
-# live change events for edits made outside mmdr
+# live change events for edits made outside mermdraw
 curl -sN --max-time 6 "$U/api/events" >"$WORK/events.log" &
 PIDS+=("$!")
 curl -fs "$U/api/file?path=architecture.md" >/dev/null # opening a file starts watching it

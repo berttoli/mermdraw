@@ -1,4 +1,4 @@
-// icons.js — installed Iconify packs (see `mmdr icons add`): lazy loading,
+// icons.js — installed Iconify packs (see `mermdraw icons add`): lazy loading,
 // lookup for the canvas, search for the picker, and registration with mermaid.
 
 export class IconStore {

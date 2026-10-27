@@ -184,9 +184,9 @@ graph LR
 });
 
 test('layout comment is parsed and written', () => {
-  const m = M.parseFlowchart('graph TD\n  A --> B\n  %% mmdr:layout A:10,20 B:-5,80.5');
+  const m = M.parseFlowchart('graph TD\n  A --> B\n  %% mermdraw:layout A:10,20 B:-5,80.5');
   assert.deepEqual(m.layout, { A: { x: 10, y: 20 }, B: { x: -5, y: 80.5 } });
-  assert.match(M.serializeFlowchart(m), /%% mmdr:layout A:10,20 B:-5,81$/);
+  assert.match(M.serializeFlowchart(m), /%% mermdraw:layout A:10,20 B:-5,81$/);
 });
 
 test('serialization is idempotent on a realistic diagram', () => {
@@ -225,7 +225,7 @@ test('labels that need quoting are quoted', () => {
 });
 
 test('edit operations keep references consistent', () => {
-  const m = M.parseFlowchart('graph TD\n  A --> B\n  subgraph g [G]\n    B\n  end\n  style A fill:#f00\n  click A "x.md"\n  %% mmdr:layout A:0,0 B:0,100');
+  const m = M.parseFlowchart('graph TD\n  A --> B\n  subgraph g [G]\n    B\n  end\n  style A fill:#f00\n  click A "x.md"\n  %% mermdraw:layout A:0,0 B:0,100');
   assert.ok(M.renameId(m, 'A', 'start'));
   assert.equal(m.edges[0].from, 'start');
   assert.equal(m.styles.start, 'fill:#f00');
@@ -256,7 +256,7 @@ test('slug and uniqueId produce readable ids', () => {
 });
 
 test('extract + merge (copy/paste) renames clashing ids', () => {
-  const m = M.parseFlowchart('graph TD\n  A[One] --> B[Two]\n  B --> C\n  %% mmdr:layout A:0,0 B:0,100 C:0,200');
+  const m = M.parseFlowchart('graph TD\n  A[One] --> B[Two]\n  B --> C\n  %% mermdraw:layout A:0,0 B:0,100 C:0,200');
   const sub = M.extract(m, ['A', 'B']);
   assert.equal(sub.edges.length, 1);
   const ids = M.merge(m, M.parseFlowchart(M.serializeFlowchart(sub)), 50, 0);
@@ -340,9 +340,9 @@ test('bundled examples parse cleanly and round-trip', async () => {
 });
 
 test('nodes declared after subgraphs still serialize stably on the first save', () => {
-  const src = 'flowchart LR\n  a\n  subgraph g [G]\n    b:::x\n  end\n  c:::x\n  classDef x fill:#fff\n  %% mmdr:layout a:0,0 b:10,0 c:20,0';
+  const src = 'flowchart LR\n  a\n  subgraph g [G]\n    b:::x\n  end\n  c:::x\n  classDef x fill:#fff\n  %% mermdraw:layout a:0,0 b:10,0 c:20,0';
   const once = M.serializeFlowchart(M.parseFlowchart(src));
   assert.equal(M.serializeFlowchart(M.parseFlowchart(once)), once);
   assert.match(once, /class c,b x/);
-  assert.match(once, /%% mmdr:layout a:0,0 c:20,0 b:10,0$/);
+  assert.match(once, /%% mermdraw:layout a:0,0 c:20,0 b:10,0$/);
 });

@@ -14,7 +14,7 @@ const clientId = Math.random().toString(36).slice(2);
 const store = {
   get(k, d) {
     try {
-      const v = localStorage.getItem('mmdr:' + k);
+      const v = localStorage.getItem('mermdraw:' + k);
       return v == null ? d : JSON.parse(v);
     } catch {
       return d;
@@ -22,7 +22,7 @@ const store = {
   },
   set(k, v) {
     try {
-      localStorage.setItem('mmdr:' + k, JSON.stringify(v));
+      localStorage.setItem('mermdraw:' + k, JSON.stringify(v));
     } catch {}
   },
 };
@@ -73,7 +73,7 @@ async function init() {
     flag,
     zoom: (k) => ($('#zoom-label').textContent = Math.round(k * 100) + '%'),
   });
-  window.mmdr = { S, canvas }; // handy from the devtools console
+  window.mermdraw = { S, canvas }; // handy from the devtools console
   buildPalette();
   bindUI();
   initTooltips();
@@ -82,7 +82,7 @@ async function init() {
   try {
     S.info = await (await fetch('/api/info')).json();
   } catch {
-    return showFatal('Cannot reach the mmdr server. Is it still running?');
+    return showFatal('Cannot reach the mermdraw server. Is it still running?');
   }
   const config = await fetch('/api/config').then((r) => r.json()).catch(() => ({}));
   initFlags({ project: config?.flags, cli: S.info.flags });
@@ -93,7 +93,7 @@ async function init() {
   await refreshFiles();
   const params = new URLSearchParams(location.search);
   const file = params.get('file') || S.info.initial || S.files.find((f) => f.diagrams)?.path || S.files[0]?.path;
-  if (!file) return showFatal(`No markdown files under <code>${esc(S.info.root)}</code>.<br>Create one with <code>mmdr new docs/architecture.md</code>.`);
+  if (!file) return showFatal(`No markdown files under <code>${esc(S.info.root)}</code>.<br>Create one with <code>mermdraw new docs/architecture.md</code>.`);
   const d = +(new URLSearchParams(location.hash.slice(1)).get('d') || 1) - 1;
   await openFile(file, d);
   connectEvents();
@@ -127,7 +127,7 @@ async function openFile(path, index = 0) {
   try {
     r = await fetch('/api/file?path=' + enc(path));
   } catch {
-    return toast('mmdr server is not reachable');
+    return toast('mermdraw server is not reachable');
   }
   if (!r.ok) return toast(`Cannot open ${path}`);
   S.path = path;
@@ -139,7 +139,7 @@ async function openFile(path, index = 0) {
   rescan();
   if (![...$('#file').options].some((o) => o.value === path)) await refreshFiles();
   $('#file').value = path;
-  document.title = `${path.split('/').pop()} · mmdr`;
+  document.title = `${path.split('/').pop()} · mermdraw`;
   if (S.view === 'doc') docTa.value = S.text;
   selectBlock(Math.max(0, Math.min(index, S.scan.blocks.length - 1)), { fit: true });
 }
@@ -311,7 +311,7 @@ const TOKENS = /("[^"\n]*")|(\|[^|\n]*\|)|(<{0,2}[ox*]?(?:-{2,}|={2,}|-\.+-|~{3,
 
 function highlight() {
   const out = codeTa.value.split('\n').map((line) => {
-    if (/^\s*%%\s*mmdr:/.test(line)) return `<span class="hl-m">${esc(line)}</span>`;
+    if (/^\s*%%\s*mermdraw:/.test(line)) return `<span class="hl-m">${esc(line)}</span>`;
     if (/^\s*%%/.test(line)) return `<span class="hl-c">${esc(line)}</span>`;
     let head = '';
     let rest = line;
@@ -407,7 +407,7 @@ async function renderPreview() {
     err.hidden = true;
     return;
   }
-  const id = `mmdr-pv-${seq}`;
+  const id = `mermdraw-pv-${seq}`;
   try {
     const { svg } = await mermaid.render(id, src);
     if (seq !== pvSeq) return;
@@ -431,10 +431,10 @@ function previewSource(src) {
 let laySeq = 0;
 /** Lets mermaid lay the diagram out and reads back node centres from its SVG. */
 async function mermaidLayout(src) {
-  const id = `mmdr-lay-${++laySeq}`;
+  const id = `mermdraw-lay-${++laySeq}`;
   const host = $('#layout-host');
   try {
-    const clean = src.split('\n').filter((l) => !/^\s*%%\s*mmdr:layout/.test(l)).join('\n');
+    const clean = src.split('\n').filter((l) => !/^\s*%%\s*mermdraw:layout/.test(l)).join('\n');
     const { svg } = await mermaid.render(id, previewSource(clean));
     host.innerHTML = svg;
     const root = host.querySelector('svg');
@@ -818,7 +818,7 @@ function styleSection(m) {
     ${row('Theme', `<select data-k="preset">${Object.entries(M.STYLE_PRESETS).map(([id, p]) => `<option value="${id}"${id === preset ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}${preset === 'custom' ? '<option value="custom" selected>Custom</option>' : ''}</select>`)}
     ${row('Look', seg('look', style.look === 'handDrawn' ? 'handDrawn' : '', [['', 'Classic'], ['handDrawn', 'Hand-drawn']]))}
     ${row('Lines', seg('curve', curve, Object.entries(M.CURVES)))}
-    ${style.editable ? '' : '<p class="warn">This diagram\'s frontmatter uses YAML mmdr can\'t rewrite safely — edit the style in the code.</p>'}`;
+    ${style.editable ? '' : '<p class="warn">This diagram\'s frontmatter uses YAML mermdraw can\'t rewrite safely — edit the style in the code.</p>'}`;
 }
 
 function bindStyleSection(el, m) {
@@ -914,7 +914,7 @@ function saveNow() {
       text = rebase(disk);
       S.text = text;
       rescan();
-      toast('Merged with changes made outside mmdr');
+      toast('Merged with changes made outside mermdraw');
     }
     throw new Error('file keeps changing on disk');
   })()
@@ -945,7 +945,7 @@ function setStatus(kind, detail = '') {
 function connectEvents() {
   const es = new EventSource('/api/events');
   es.onopen = () => $('#status').classList.contains('offline') && setStatus(S.dirty ? 'unsaved' : 'saved');
-  es.onerror = () => setStatus('offline', 'Lost connection to the mmdr server');
+  es.onerror = () => setStatus('offline', 'Lost connection to the mermdraw server');
   es.onmessage = (ev) => {
     let e;
     try {
@@ -1091,7 +1091,7 @@ function buildPalette() {
   }).join('');
   for (const b of $$('.pi', el)) {
     b.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/x-mmdr-shape', b.dataset.shape);
+      e.dataTransfer.setData('text/x-mermdraw-shape', b.dataset.shape);
       e.dataTransfer.effectAllowed = 'copy';
     });
     b.addEventListener('click', () => canvas.addShape(b.dataset.shape, null));
@@ -1169,7 +1169,7 @@ function renderLabs() {
     const from =
       src === 'user' ? `set in this browser · <button data-reset="${f.id}">reset to ${inheritedFlag(f.id) ? 'on' : 'off'}</button>`
       : src === 'cli' ? 'set on the command line'
-      : src === 'project' ? 'set by .mmdr/config.json'
+      : src === 'project' ? 'set by .mermdraw/config.json'
       : `default ${f.default ? 'on' : 'off'}`;
     return `<div class="flag"><h4>${esc(f.name)} <span class="stage-chip ${f.stage}">${f.stage}</span></h4>
       <label class="switch" title="${flag(f.id) ? 'On' : 'Off'}"><input type="checkbox" data-flag="${f.id}"${flag(f.id) ? ' checked' : ''}><i></i></label>
@@ -1211,7 +1211,7 @@ function openIconPicker(onPick, query = '') {
 async function runIconSearch() {
   const grid = $('#icon-grid');
   if (!iconStore.packs.size) {
-    grid.innerHTML = `<div class="picker-empty">No icon packs installed yet. In a terminal run<br><br><code>mmdr icons add logos devicon</code><br><br>and reload this page. Add <code>--vendor</code> to keep the packs in this repository for your team.</div>`;
+    grid.innerHTML = `<div class="picker-empty">No icon packs installed yet. In a terminal run<br><br><code>mermdraw icons add logos devicon</code><br><br>and reload this page. Add <code>--vendor</code> to keep the packs in this repository for your team.</div>`;
     return;
   }
   const seq = ++pickerSeq;

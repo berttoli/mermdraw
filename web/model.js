@@ -187,7 +187,7 @@ const ID = String.raw`[\p{L}\p{N}_](?:[\p{L}\p{N}_]|-(?=[\p{L}\p{N}_]))*`;
 const ID_RE = new RegExp('^' + ID, 'u');
 const RESERVED = new Set(['end', 'subgraph', 'graph', 'flowchart', 'style', 'class', 'classdef', 'click', 'linkstyle',
   'direction', 'call', 'href', 'default', 'tb', 'td', 'bt', 'rl', 'lr']);
-const LAYOUT_TAG = 'mmdr:layout';
+const LAYOUT_TAG = 'mermdraw:layout';
 
 export function emptyFlowchart(dir = 'TD') {
   return {
@@ -197,7 +197,7 @@ export function emptyFlowchart(dir = 'TD') {
 }
 
 /**
- * Parses a mermaid flowchart into an editable model. Statements mmdr does not
+ * Parses a mermaid flowchart into an editable model. Statements mermdraw does not
  * understand are kept verbatim in `extras` (and reported in `warnings`) so a
  * round trip never silently drops anything. Returns null if `src` is not a flowchart.
  */
@@ -1045,7 +1045,7 @@ export function layeredLayout(m, size) {
 
 /**
  * Palettes offered by the Styles experiment. Mermaid built-in themes carry a
- * `canvas` approximation for mmdr's own renderer; mmdr presets use mermaid's
+ * `canvas` approximation for mermdraw's own renderer; mermdraw presets use mermaid's
  * `base` theme with themeVariables, which every mermaid ≥ 10.5 honours.
  */
 export const STYLE_PRESETS = {
@@ -1180,7 +1180,7 @@ export function presetOf(style) {
   return 'custom';
 }
 
-/** Colours mmdr's canvas should use for this diagram (themeVariables or a built-in theme's approximation). */
+/** Colours mermdraw's canvas should use for this diagram (themeVariables or a built-in theme's approximation). */
 export function canvasPalette(style) {
   const preset = Object.values(STYLE_PRESETS).find((p) => p.theme && p.theme === style.theme && p.canvas);
   const v = { ...(preset?.canvas || {}), ...style.vars };
