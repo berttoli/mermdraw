@@ -4,16 +4,20 @@
 //! serves it on 127.0.0.1, watches the files the UI has open, and writes edits
 //! back to disk atomically so they can be committed like any other change.
 
+mod addons;
 mod icons;
 mod md;
+mod sha256;
 
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::process::{self, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, UNIX_EPOCH};
@@ -23,6 +27,15 @@ const DEFAULT_PORT: u16 = 7788;
 const MAX_BODY: usize = 25 * 1024 * 1024;
 const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", "build", "vendor", "__pycache__"];
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"];
+/// Commands that are never looked up as addons.
+const BUILTINS: &[&str] = &["ls", "cat", "new", "write", "icons", "addons", "edit", "open", "help"];
+/// Exit code of `write` when the file changed since the version it was given.
+const EXIT_CONFLICT: i32 = 3;
+/// The addon contract's version (docs/ADDONS.md): bumped only by a breaking change to the JSON commands.
+const CONTRACT: u32 = 1;
+
+/// Set by `--json`: errors are then reported as JSON on stdout.
+static JSON: AtomicBool = AtomicBool::new(false);
 
 struct Asset {
     path: &'static str,
@@ -90,9 +103,24 @@ struct Opts {
     new_server: bool,
     /// feature flags forced on (true) or off (false) from the command line
     flags: Vec<(String, bool)>,
+    json: bool,
+    /// `write --base`: the version of the file the new source was based on
+    base: Option<String>,
+    append: bool,
+    /// `icons search --limit`
+    limit: usize,
+    /// `addons add --version`: a release tag
+    tag: Option<String>,
 }
 
 fn main() {
+    let raw: Vec<OsString> = env::args_os().skip(1).collect();
+    // `mermdraw NAME ARGS…` runs the addon mermdraw-NAME before any option is parsed, so its arguments reach it as given.
+    if let Some(name) = raw.first().and_then(|a| a.to_str()).filter(|n| !BUILTINS.contains(n)) {
+        if let Some(bin) = addons::find(name) {
+            run_addon(&bin, &raw[1..]);
+        }
+    }
     let mut opts = Opts {
         port: None,
         open: true,
@@ -102,14 +130,20 @@ fn main() {
         vendor: false,
         new_server: false,
         flags: Vec::new(),
+        json: false,
+        base: None,
+        append: false,
+        limit: 50,
+        tag: None,
     };
     let mut pos: Vec<String> = Vec::new();
-    let args: Vec<String> = env::args_os()
-        .skip(1)
+    let args: Vec<String> = raw
+        .into_iter()
         .map(|a| {
             a.into_string().unwrap_or_else(|a| die(&format!("{} is not valid UTF-8; mermdraw needs UTF-8 paths", a.to_string_lossy())))
         })
         .collect();
+    JSON.store(args.iter().any(|a| a == "--json"), Ordering::Relaxed);
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
@@ -119,6 +153,7 @@ fn main() {
         };
         match a {
             "-h" | "--help" => return print_help(),
+            "--version" if pos.first().map(String::as_str) == Some("addons") => opts.tag = Some(value()),
             "-V" | "--version" => return out(&format!("mermdraw {VERSION}")),
             "-p" | "--port" => opts.port = Some(value().parse().unwrap_or_else(|_| die("--port needs a number"))),
             "-t" | "--type" => opts.kind = value(),
@@ -127,6 +162,10 @@ fn main() {
             "--app" => opts.app = true,
             "--vendor" => opts.vendor = true,
             "--new" => opts.new_server = true,
+            "--json" => opts.json = true,
+            "--base" => opts.base = Some(value()),
+            "--append" => opts.append = true,
+            "--limit" => opts.limit = value().parse().ok().filter(|n| *n > 0).unwrap_or_else(|| die("--limit needs a positive number")),
             "--enable" | "--disable" => {
                 let on = a == "--enable";
                 for f in value().split(',').map(str::trim).filter(|f| !f.is_empty()) {
@@ -138,11 +177,17 @@ fn main() {
         }
         i += 1;
     }
-    match pos.first().map(String::as_str) {
-        Some("ls") => cmd_ls(&pos[1..]),
-        Some("cat") => cmd_cat(&pos[1..]),
+    let cmd = pos.first().map(String::as_str);
+    if opts.json && !matches!(cmd, Some("ls" | "cat" | "write" | "icons")) {
+        die("--json works with ls, cat, write and icons search");
+    }
+    match cmd {
+        Some("ls") => cmd_ls(&pos[1..], &opts),
+        Some("cat") => cmd_cat(&pos[1..], &opts),
+        Some("write") => cmd_write(&pos[1..], &opts),
         Some("new") => cmd_new(&pos[1..], &opts),
         Some("icons") => cmd_icons(&pos[1..], &opts),
+        Some("addons") => cmd_addons(&pos[1..], &opts),
         Some("edit") | Some("open") => serve(pos.get(1).map(String::as_str), &opts),
         Some("help") => print_help(),
         other => serve(other, &opts),
@@ -156,8 +201,13 @@ fn print_help() {
 USAGE
   mermdraw [PATH]             open the editor for a .md/.mmd file or a directory (default: .)
   mermdraw FILE:LINE          open the diagram at LINE (FILE:LINE:COL works too, as editors pass it)
-  mermdraw ls FILE            list the mermaid diagrams in FILE
+  mermdraw ls [FILE|DIR]      list the mermaid diagrams in FILE, or in the markdown files under DIR
   mermdraw cat FILE [N]       print the source of diagram N (1-based, default 1)
+  mermdraw write FILE N [--base VERSION] < SOURCE
+                              replace diagram N with the source on stdin, keeping its canvas
+                              positions unless the input has its own layout comment
+  mermdraw write FILE --append [--title TITLE] < SOURCE
+                              append the diagram on stdin (creates FILE if needed)
   mermdraw new FILE [-t TYPE] [--title TITLE]
                               append a new diagram (flowchart, sequence, class, state,
                               er, architecture, c4, gantt, mindmap)
@@ -166,6 +216,15 @@ USAGE
                               install Iconify packs (logos, devicon, simple-icons, mdi, ...)
                               into ~/.config/mermdraw/icons, or into this repo's .mermdraw/icons
   mermdraw icons rm PACK... [--vendor]
+  mermdraw icons search QUERY [--limit N]
+                              find icons in the installed packs (default: the best 50)
+  mermdraw addons [ls]        list installed addons
+  mermdraw addons add NAME... [--version vX.Y.Z]
+                              install official addons (e.g. mcp) from github.com/berttoli/mermdraw-NAME
+                              into ~/.config/mermdraw/addons, checked against the release's
+                              SHA256SUMS.txt and, when gh is installed, its build attestation
+  mermdraw addons rm NAME...
+  mermdraw NAME [ARGS...]     run the addon mermdraw-NAME (addons folder first, then PATH)
 
 OPTIONS
   -p, --port N                port to listen on (default {DEFAULT_PORT}, next free one if taken)
@@ -174,8 +233,13 @@ OPTIONS
       --new                   start a new server even if one is already serving this folder
       --enable F1,F2          turn feature flags on (see Labs in the editor)
       --disable F1,F2         turn feature flags off
+      --json                  JSON output for ls, cat, write and icons search, errors included
+                              (an error object on stdout)
   -h, --help                  show this help
   -V, --version               show version
+
+EXIT CODES
+  0 done, 1 error, 3 write refused because the file changed since --base
 
 A server already running for the same folder is reused: mermdraw opens a tab on it and exits.
 The editor saves straight into the markdown file; commit it like any other change."
@@ -192,8 +256,47 @@ fn out(line: &str) {
 }
 
 fn die(msg: &str) -> ! {
-    eprintln!("mermdraw: {msg}");
-    process::exit(1)
+    fail("error", msg, "", 1)
+}
+
+/// Reports an error and exits with `code`: for `--json` commands a JSON object on stdout, whose `fields` are extra
+/// members of `error` (`,"version":"…"`); otherwise a line on stderr.
+fn fail(kind: &str, msg: &str, fields: &str, code: i32) -> ! {
+    if JSON.load(Ordering::Relaxed) {
+        let err = format!(r#"{{"code":{},"message":{}{fields}}}"#, json_str(kind), json_str(msg));
+        let _ = writeln!(io::stdout().lock(), r#"{{{},"error":{err}}}"#, json_head());
+    } else {
+        eprintln!("mermdraw: {msg}");
+    }
+    process::exit(code)
+}
+
+/// mermdraw's config folder: $XDG_CONFIG_HOME/mermdraw, else ~/.config/mermdraw (%APPDATA%\mermdraw on Windows).
+fn config_dir() -> Option<PathBuf> {
+    let base = match env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        Some(x) => PathBuf::from(x),
+        None if cfg!(windows) => PathBuf::from(env::var_os("APPDATA")?),
+        None => PathBuf::from(env::var_os("HOME")?).join(".config"),
+    };
+    Some(base.join("mermdraw"))
+}
+
+/// Runs an addon in mermdraw's place. On Unix it replaces this process, so stdin and stdout (an MCP server's
+/// protocol stream, say) belong to the addon; elsewhere mermdraw waits for it and exits with its code.
+fn run_addon(bin: &Path, args: &[OsString]) -> ! {
+    let mut cmd = Command::new(bin);
+    cmd.args(args).env("MERMDRAW", env::current_exe().unwrap_or_else(|_| "mermdraw".into())).env("MERMDRAW_VERSION", VERSION);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let e = cmd.exec();
+        die(&format!("could not run {}: {e}", bin.display()))
+    }
+    #[cfg(not(unix))]
+    match cmd.status() {
+        Ok(s) => process::exit(s.code().unwrap_or(1)),
+        Err(e) => die(&format!("could not run {}: {e}", bin.display())),
+    }
 }
 
 // ---------------------------------------------------------------- terminal commands
@@ -204,22 +307,207 @@ fn read_doc(path: &str) -> (String, Vec<md::Block>) {
     (text, blocks)
 }
 
-fn cmd_ls(args: &[String]) {
-    let path = args.first().unwrap_or_else(|| die("usage: mermdraw ls FILE"));
-    let (_, blocks) = read_doc(path);
-    out(&format!("{path} — {} diagram{}", blocks.len(), if blocks.len() == 1 { "" } else { "s" }));
-    for b in &blocks {
-        let lines = format!("L{}-{}", b.start + 1, b.end + 1);
-        out(&format!("  {:>2}  {:<18} {:<10} {}", b.index + 1, b.kind, lines, b.title.as_deref().unwrap_or("")));
+/// The members every JSON output starts with: mermdraw's version and the addon contract's.
+fn json_head() -> String {
+    format!(r#""mermdraw":{},"contract":{CONTRACT}"#, json_str(VERSION))
+}
+
+fn json_opt(s: Option<&str>) -> String {
+    s.map_or_else(|| "null".into(), json_str)
+}
+
+/// A diagram's JSON members: its 1-based number, the 1-based lines of its fences, and whether the source has a
+/// canvas-position comment.
+fn diagram_fields(b: &md::Block, line_count: usize) -> String {
+    format!(
+        r#""index":{},"kind":{},"title":{},"start_line":{},"end_line":{},"layout":{}"#,
+        b.index + 1,
+        json_str(&b.kind),
+        json_opt(b.title.as_deref()),
+        b.start + 1,
+        b.end.min(line_count.saturating_sub(1)) + 1,
+        b.source.lines().any(md::is_layout_line)
+    )
+}
+
+fn cmd_ls(args: &[String], opts: &Opts) {
+    if args.len() > 1 {
+        die("usage: mermdraw ls [FILE|DIR] [--json]");
+    }
+    let path = args.first().map(String::as_str).unwrap_or(".");
+    let dir = Path::new(path).is_dir();
+    let files: Vec<String> = if dir {
+        let mut rels = Vec::new();
+        walk(Path::new(path), Path::new(path), &mut rels, 0);
+        rels.into_iter().map(|r| if path == "." { r } else { format!("{}/{r}", path.trim_end_matches('/')) }).collect()
+    } else {
+        vec![path.to_string()]
+    };
+    let (mut items, mut shown) = (Vec::new(), 0);
+    for file in &files {
+        let version = version_of(Path::new(file));
+        let text = match fs::read_to_string(file) {
+            Ok(text) => text,
+            Err(_) if dir => continue,
+            Err(e) => die(&format!("{file}: {e}")),
+        };
+        let mmd = md::is_mmd(file);
+        let blocks = md::blocks(&text, mmd);
+        if dir && blocks.is_empty() {
+            continue;
+        }
+        if opts.json {
+            let title = if mmd { blocks.first().and_then(|b| b.title.clone()) } else { md::title(&text) };
+            let n = text.lines().count();
+            let diagrams: Vec<String> = blocks.iter().map(|b| format!("{{{}}}", diagram_fields(b, n))).collect();
+            items.push(format!(
+                r#"{{"file":{},"version":{},"title":{},"diagrams":[{}]}}"#,
+                json_str(file),
+                json_str(&version),
+                json_opt(title.as_deref()),
+                diagrams.join(",")
+            ));
+            continue;
+        }
+        shown += 1;
+        out(&format!("{file} — {} diagram{}", blocks.len(), if blocks.len() == 1 { "" } else { "s" }));
+        for b in &blocks {
+            let lines = format!("L{}-{}", b.start + 1, b.end + 1);
+            out(&format!("  {:>2}  {:<18} {:<10} {}", b.index + 1, b.kind, lines, b.title.as_deref().unwrap_or("")));
+        }
+    }
+    if opts.json {
+        out(&format!(r#"{{{},"files":[{}]}}"#, json_head(), items.join(",")));
+    } else if shown == 0 {
+        out(&format!("no mermaid diagrams under {path}"));
     }
 }
 
-fn cmd_cat(args: &[String]) {
-    let path = args.first().unwrap_or_else(|| die("usage: mermdraw cat FILE [N]"));
+fn cmd_cat(args: &[String], opts: &Opts) {
+    let path = args.first().unwrap_or_else(|| die("usage: mermdraw cat FILE [N] [--json]"));
     let n: usize = args.get(1).map(|s| s.parse().unwrap_or_else(|_| die("N must be a number"))).unwrap_or(1);
-    let (_, blocks) = read_doc(path);
+    // read before the text, so a change in between makes the version older, never newer, than the source
+    let version = version_of(Path::new(path));
+    let (text, blocks) = read_doc(path);
     let b = blocks.get(n.wrapping_sub(1)).unwrap_or_else(|| die(&format!("{path} has no diagram #{n}")));
-    out(b.source.strip_suffix('\n').unwrap_or(&b.source));
+    if opts.json {
+        let (source, _) = md::split_layout(&b.source);
+        out(&format!(
+            r#"{{{},"file":{},"version":{},{},"source":{}}}"#,
+            json_head(),
+            json_str(path),
+            json_str(&version),
+            diagram_fields(b, text.lines().count()),
+            json_str(&source)
+        ));
+    } else {
+        out(b.source.strip_suffix('\n').unwrap_or(&b.source));
+    }
+}
+
+/// `write FILE N` replaces diagram N with the source on stdin; `write FILE --append` adds it as a new diagram.
+/// The write is refused (exit 3) when the file changed since `--base`, or since it was read here.
+fn cmd_write(args: &[String], opts: &Opts) {
+    const USAGE: &str =
+        "usage: mermdraw write FILE N [--base VERSION] < diagram.mmd, or: mermdraw write FILE --append [--title TITLE] < diagram.mmd";
+    let path = args.first().filter(|_| args.len() <= 2).unwrap_or_else(|| die(USAGE));
+    if !(md::is_md(path) || md::is_mmd(path)) {
+        die(&format!("{path}: give a markdown (.md) or mermaid (.mmd) file"));
+    }
+    let n: Option<usize> = match (args.get(1), opts.append) {
+        (Some(n), false) => Some(n.parse().ok().filter(|n| *n > 0).unwrap_or_else(|| die("N must be a diagram number (1-based)"))),
+        (None, true) => None,
+        _ => die(USAGE),
+    };
+    let source = read_source();
+    let mmd = md::is_mmd(path);
+    let file = Path::new(path);
+    let read_version = version_of(file);
+    let existing = match fs::read_to_string(file) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == io::ErrorKind::NotFound && n.is_none() => None,
+        Err(e) => die(&format!("{path}: {e}")),
+    };
+    let created = existing.is_none();
+    let existing = existing.unwrap_or_default();
+    let blocks = md::blocks(&existing, mmd);
+    let check_fence = |fence| {
+        if let Some(l) = md::closing_fence_line(&source, fence).filter(|_| !mmd) {
+            die(&format!("line {l} of the diagram would end its markdown code block; give the source without ``` fences"));
+        }
+    };
+    let (text, index, layout) = match n {
+        Some(n) => {
+            let b = blocks.get(n - 1).unwrap_or_else(|| die(&format!("{path} has no diagram #{n} (it has {})", blocks.len())));
+            check_fence(b.fence);
+            let (_, old_layout) = md::split_layout(&b.source);
+            let (source, layout) = if source.lines().any(md::is_layout_line) {
+                (source.clone(), "input")
+            } else if !old_layout.is_empty() {
+                (format!("{source}\n{}", old_layout.join("\n")), "kept")
+            } else {
+                (source.clone(), "none")
+            };
+            (md::replace_block(&existing, b, &source, mmd), n, layout)
+        }
+        None => {
+            check_fence(('`', 3));
+            let layout = if source.lines().any(md::is_layout_line) { "input" } else { "none" };
+            if mmd {
+                if !existing.trim().is_empty() {
+                    die(&format!(".mmd files hold a single diagram; replace it with: mermdraw write {path} 1"));
+                }
+                (format!("{source}\n"), 1, layout)
+            } else {
+                let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                (md::append_block(&existing, &stem, opts.title.as_deref(), &source), blocks.len() + 1, layout)
+            }
+        }
+    };
+    create_parent(file);
+    let base = opts.base.clone().unwrap_or(read_version);
+    let version = match save_doc(file, text.as_bytes(), Some(&base)) {
+        Ok(v) => v,
+        Err(SaveError::Conflict(now)) => fail(
+            "conflict",
+            &format!("{path} changed since version {base} (it is now {now}); read it again and redo the change"),
+            &format!(r#","version":{}"#, json_str(&now)),
+            EXIT_CONFLICT,
+        ),
+        Err(SaveError::Io(e)) => die(&format!("{path}: {e}")),
+    };
+    if opts.json {
+        out(&format!(
+            r#"{{{},"file":{},"index":{index},"version":{},"layout":{},"created":{created}}}"#,
+            json_head(),
+            json_str(path),
+            json_str(&version),
+            json_str(layout)
+        ));
+    } else {
+        let kept = if layout == "kept" { " (canvas positions kept)" } else { "" };
+        match (n, created) {
+            (Some(_), _) => out(&format!("wrote diagram #{index} in {path}{kept}")),
+            (None, true) => out(&format!("created {path} with the diagram")),
+            (None, false) => out(&format!("added diagram #{index} to {path}")),
+        }
+    }
+}
+
+/// The diagram source `write` reads from stdin: LF line endings, without surrounding blank lines.
+fn read_source() -> String {
+    let mut stdin = io::stdin();
+    if stdin.is_terminal() {
+        die("write reads the diagram source from stdin, e.g.: mermdraw write docs/arch.md 2 < diagram.mmd");
+    }
+    let mut raw = String::new();
+    stdin.read_to_string(&mut raw).unwrap_or_else(|e| die(&format!("could not read the diagram from stdin: {e}")));
+    let lines: Vec<&str> = raw.lines().skip_while(|l| l.trim().is_empty()).collect();
+    let source = lines.join("\n").trim_end().to_string();
+    if source.is_empty() {
+        die("no diagram source on stdin");
+    }
+    source
 }
 
 fn cmd_new(args: &[String], opts: &Opts) {
@@ -260,6 +548,9 @@ fn cmd_icons(args: &[String], opts: &Opts) {
     let root = env::current_dir().ok().map(|d| git_root(&d).unwrap_or(d));
     let dest = if opts.vendor { root.as_deref().map(icons::project_dir) } else { icons::global_dir() }
         .unwrap_or_else(|| die("cannot find a config directory (set XDG_CONFIG_HOME)"));
+    if opts.json && !matches!(args.first().map(String::as_str), Some("search" | "find")) {
+        die("--json works with icons search");
+    }
     match args.first().map(String::as_str) {
         None | Some("ls") | Some("list") => {
             let packs = icons::installed(root.as_deref());
@@ -299,7 +590,115 @@ fn cmd_icons(args: &[String], opts: &Opts) {
                 process::exit(1);
             }
         }
-        Some(other) => die(&format!("unknown icons command '{other}' (try: ls, add, rm)")),
+        Some("search") | Some("find") => {
+            let query = args[1..].join(" ");
+            if query.trim().is_empty() {
+                die("usage: mermdraw icons search QUERY [--limit N] [--json]");
+            }
+            let packs = icons::installed(root.as_deref());
+            let (hits, total) = icons::search(root.as_deref(), &query, opts.limit);
+            if opts.json {
+                let packs: Vec<String> =
+                    packs.iter().map(|p| format!(r#"{{"name":{},"source":{}}}"#, json_str(&p.name), json_str(p.source))).collect();
+                let found: Vec<String> = hits
+                    .iter()
+                    .map(|h| {
+                        let icon = format!("{}:{}", h.pack, h.name);
+                        format!(
+                            r#"{{"icon":{},"pack":{},"name":{},"source":{}}}"#,
+                            json_str(&icon),
+                            json_str(&h.pack),
+                            json_str(&h.name),
+                            json_str(h.source)
+                        )
+                    })
+                    .collect();
+                out(&format!(
+                    r#"{{{},"query":{},"packs":[{}],"icons":[{}],"total":{total}}}"#,
+                    json_head(),
+                    json_str(&query),
+                    packs.join(","),
+                    found.join(",")
+                ));
+            } else if packs.is_empty() {
+                out("no icon packs installed — try: mermdraw icons add logos devicon");
+            } else if total == 0 {
+                let names: Vec<&str> = packs.iter().map(|p| p.name.as_str()).collect();
+                out(&format!("no icons match '{query}' in {}", names.join(", ")));
+            } else {
+                for h in &hits {
+                    out(&format!("  {:<40} {}", format!("{}:{}", h.pack, h.name), h.source));
+                }
+                if total > hits.len() {
+                    out(&format!("  … and {} more (--limit N shows more)", total - hits.len()));
+                }
+            }
+        }
+        Some(other) => die(&format!("unknown icons command '{other}' (try: ls, add, rm, search)")),
+    }
+}
+
+fn cmd_addons(args: &[String], opts: &Opts) {
+    let dir = addons::dir().unwrap_or_else(|| die("cannot find a config directory (set XDG_CONFIG_HOME)"));
+    let sub = args.first().map(String::as_str);
+    if opts.tag.is_some() && !matches!(sub, Some("add" | "install")) {
+        die("--version VERSION goes with: mermdraw addons add NAME --version vX.Y.Z");
+    }
+    match sub {
+        None | Some("ls") | Some("list") => {
+            let list = addons::installed(BUILTINS);
+            if list.is_empty() {
+                out("no addons installed — try: mermdraw addons add mcp");
+            }
+            for a in list {
+                out(&format!("  {:<16} {:>8}  {:<7} {}", a.name, icons::human(a.size), a.source, a.path.display()));
+            }
+        }
+        Some("add") | Some("install") => {
+            if args.len() < 2 {
+                die("usage: mermdraw addons add NAME... [--version vX.Y.Z]");
+            }
+            if let Some(t) = opts.tag.as_deref().filter(|t| !addons::valid_tag(t)) {
+                die(&format!("'{t}' is not a release tag like v0.1.0"));
+            }
+            for name in &args[1..] {
+                if !addons::valid_name(name) {
+                    die(&format!("'{name}' is not an addon name: official addons are named with a-z, 0-9 and -, e.g. mcp"));
+                }
+                if BUILTINS.contains(&name.as_str()) {
+                    die(&format!("'{name}' is a mermdraw command, not an addon"));
+                }
+                match addons::add(name, opts.tag.as_deref(), &dir) {
+                    Ok(i) => {
+                        out(&format!("installed {name} → {}", i.path.display()));
+                        out(&format!("  from         {}", i.url));
+                        out(&format!("  sha256       {} matches SHA256SUMS.txt", i.sha256));
+                        out(&format!("  attestation  {}", i.attestation));
+                        out(&format!("  run it with  mermdraw {name}"));
+                    }
+                    Err(e) => die(&e),
+                }
+            }
+        }
+        Some("rm") | Some("remove") | Some("uninstall") => {
+            if args.len() < 2 {
+                die("usage: mermdraw addons rm NAME...");
+            }
+            let mut missing = false;
+            for name in &args[1..] {
+                match addons::remove(name) {
+                    Ok(path) => out(&format!("removed {}", path.display())),
+                    Err(e) => {
+                        eprintln!("mermdraw: {e}");
+                        missing = true;
+                    }
+                }
+            }
+            if missing {
+                process::exit(1);
+            }
+        }
+        Some(other) => die(&format!("unknown addons command '{other}' (try: ls, add, rm)")),
     }
 }
 
@@ -341,7 +740,7 @@ fn serve(target: Option<&str>, opts: &Opts) {
     if !target.exists() {
         if !(md::is_md(&name) || md::is_mmd(&name)) {
             if !name.contains(['/', '\\', '.']) {
-                die(&format!("{name} is not a command or an existing file (try --help)"));
+                die(&format!("{name} is not a command, an installed addon or an existing file (try --help)"));
             }
             die(&format!("{name} does not exist"));
         }
@@ -646,17 +1045,14 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
         }
         ("PUT", "/api/file") => {
             let Some((rel, full)) = resolve_doc(st, q("path")) else { return text(s, "400 Bad Request", "bad path") };
-            let current = version_of(&full);
-            if let Some(base) = req.headers.get("x-base-version") {
-                if base != &current && current != "missing" {
+            let v = match save_doc(&full, &req.body, req.headers.get("x-base-version").map(String::as_str)) {
+                Ok(v) => v,
+                Err(SaveError::Conflict(current)) => {
                     let bytes = fs::read(&full).unwrap_or_default();
                     return respond(s, "409 Conflict", "text/plain; charset=utf-8", &[("X-Version", current)], &bytes);
                 }
-            }
-            if let Err(e) = write_atomic(&full, &req.body) {
-                return text(s, "500 Internal Server Error", &e.to_string());
-            }
-            let v = version_of(&full);
+                Err(SaveError::Io(e)) => return text(s, "500 Internal Server Error", &e.to_string()),
+            };
             st.watched.lock().unwrap().insert(rel.clone(), v.clone());
             let origin = req.headers.get("x-client").cloned().unwrap_or_default();
             st.publish(format!(
@@ -813,6 +1209,23 @@ fn resolve(root: &Path, rel: &str) -> Option<PathBuf> {
     }
     let parent = full.parent()?.canonicalize().ok()?;
     parent.starts_with(root).then(|| parent.join(full.file_name().unwrap()))
+}
+
+enum SaveError {
+    /// the file changed since the base version; this is its version now
+    Conflict(String),
+    Io(io::Error),
+}
+
+/// Saves a document unless it changed since version `base` (one deleted since never conflicts) and returns its new
+/// version. The editor's `PUT /api/file` and `mermdraw write` both save through here.
+fn save_doc(path: &Path, data: &[u8], base: Option<&str>) -> Result<String, SaveError> {
+    let current = version_of(path);
+    if base.is_some_and(|b| b != current && current != "missing") {
+        return Err(SaveError::Conflict(current));
+    }
+    write_atomic(path, data).map_err(SaveError::Io)?;
+    Ok(version_of(path))
 }
 
 fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {

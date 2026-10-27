@@ -9,8 +9,15 @@ pub struct Block {
     pub end: usize,
     pub kind: String,
     pub title: Option<String>,
+    /// the diagram source, dedented by the fence's indentation
     pub source: String,
+    /// indentation of the opening fence (a fence inside a list item), and its character and length
+    pub indent: usize,
+    pub fence: (char, usize),
 }
+
+/// The comment that holds a diagram's canvas positions (`%% mermdraw:layout id:x,y …`; see web/model.js).
+const LAYOUT_TAG: &str = "mermdraw:layout";
 
 pub fn is_md(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
@@ -26,7 +33,7 @@ pub fn blocks(text: &str, whole_file: bool) -> Vec<Block> {
     let lines: Vec<&str> = text.lines().collect();
     if whole_file {
         let (kind, title) = describe(text);
-        return vec![Block { index: 0, start: 0, end: lines.len(), kind, title, source: text.to_string() }];
+        return vec![Block { index: 0, start: 0, end: lines.len(), kind, title, source: text.to_string(), indent: 0, fence: ('`', 3) }];
     }
     let mut out = Vec::new();
     let mut heading: Option<String> = None;
@@ -74,7 +81,8 @@ pub fn blocks(text: &str, whole_file: bool) -> Vec<Block> {
                 .collect();
             let source = source.join("\n");
             let (kind, fm_title) = describe(&source);
-            out.push(Block { index: out.len(), start, end, kind, title: fm_title.or_else(|| heading.clone()), source });
+            let title = fm_title.or_else(|| heading.clone());
+            out.push(Block { index: out.len(), start, end, kind, title, source, indent, fence: (fc, n) });
         }
         i = end + 1;
     }
@@ -193,6 +201,59 @@ pub fn append_block(existing: &str, stem: &str, title: Option<&str>, tpl: &str) 
     out
 }
 
+pub fn is_layout_line(line: &str) -> bool {
+    line.trim().strip_prefix("%%").is_some_and(|r| r.trim_start().starts_with(LAYOUT_TAG))
+}
+
+/// A diagram's source without its layout comment, and the comment's lines (verbatim, normally one).
+pub fn split_layout(source: &str) -> (String, Vec<&str>) {
+    let (layout, rest): (Vec<&str>, Vec<&str>) = source.lines().partition(|l| is_layout_line(l));
+    (rest.join("\n"), layout)
+}
+
+/// The 1-based number of the first line of `source` that would end a block fenced with `fence` early.
+pub fn closing_fence_line(source: &str, (fc, n): (char, usize)) -> Option<usize> {
+    source
+        .lines()
+        .position(|l| {
+            let r = l.trim_start();
+            let run = r.chars().take_while(|c| *c == fc).count();
+            run >= n && r[run..].trim().is_empty()
+        })
+        .map(|i| i + 1)
+}
+
+/// `text` with block `b`'s source replaced by `source`, indented like its fence and in the file's line endings.
+/// Every other byte of the file stays as it was.
+pub fn replace_block(text: &str, b: &Block, source: &str, whole_file: bool) -> String {
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let pad = " ".repeat(b.indent);
+    let mut body = String::with_capacity(source.len() + 64);
+    for l in source.lines() {
+        if !l.is_empty() {
+            body.push_str(&pad);
+        }
+        body.push_str(l);
+        body.push_str(eol);
+    }
+    if whole_file {
+        return body;
+    }
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut out = String::with_capacity(text.len() + body.len());
+    for l in &lines[..=b.start] {
+        out.push_str(l);
+    }
+    if !out.ends_with('\n') {
+        out.push_str(eol); // an unclosed fence on the last line
+    }
+    out.push_str(&body);
+    for l in lines.get(b.end..).unwrap_or_default() {
+        out.push_str(l);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,6 +308,45 @@ mod tests {
         assert!(!t.replace("\r\n", "").contains('\n'));
         assert_eq!(append_block("a\n", "doc", None, "graph TD\n"), "a\n\n```mermaid\ngraph TD\n```\n");
         // LF stays LF
+    }
+
+    #[test]
+    fn layout_comments_are_split_off() {
+        let src = "flowchart LR\n    a --> b\n    %% a note\n    %%mermdraw:layout a:0,0 b:200,0";
+        let (body, layout) = split_layout(src);
+        assert_eq!(body, "flowchart LR\n    a --> b\n    %% a note");
+        assert_eq!(layout, vec!["    %%mermdraw:layout a:0,0 b:200,0"]);
+        assert!(
+            is_layout_line("%% mermdraw:layout x:1,2") && !is_layout_line("%% mermdraw: layout") && !is_layout_line("a %% mermdraw:layout")
+        );
+        assert_eq!(split_layout("graph TD\n  A").1.len(), 0);
+    }
+
+    #[test]
+    fn finds_lines_that_would_close_the_fence() {
+        assert_eq!(closing_fence_line("graph TD\n  A\n```", ('`', 3)), Some(3));
+        assert_eq!(closing_fence_line("graph TD\n  ````  ", ('`', 3)), Some(2));
+        assert_eq!(closing_fence_line("graph TD\n```", ('`', 4)), None);
+        assert_eq!(closing_fence_line("graph TD\n```mermaid\n~~~", ('`', 3)), None);
+        assert_eq!(closing_fence_line("graph TD\n  A[\"```\"]", ('`', 3)), None);
+    }
+
+    #[test]
+    fn replace_block_changes_only_the_block() {
+        let text = "# Doc\r\n\r\n- item\r\n  ```mermaid\r\n  graph TD\r\n    A\r\n  ```\r\n\r\n```mermaid\r\ngraph LR\r\n```\r\ntail";
+        let b = blocks(text, false);
+        let t = replace_block(text, &b[0], "graph TD\n  A --> B\n\n  B", false);
+        assert_eq!(
+            t,
+            "# Doc\r\n\r\n- item\r\n  ```mermaid\r\n  graph TD\r\n    A --> B\r\n\r\n    B\r\n  ```\r\n\r\n```mermaid\r\ngraph LR\r\n```\r\ntail"
+        );
+        let again = blocks(&t, false);
+        assert_eq!(again[0].source, "graph TD\n  A --> B\n\n  B");
+        assert_eq!(again[1].source, "graph LR");
+        // an unclosed fence runs to the end of the file
+        let t = replace_block("```mermaid", &blocks("```mermaid", false)[0], "graph TD", false);
+        assert_eq!(t, "```mermaid\ngraph TD\n");
+        assert_eq!(replace_block("graph TD\r\n", &blocks("graph TD\r\n", true)[0], "graph LR\n  A", true), "graph LR\r\n  A\r\n");
     }
 
     #[test]

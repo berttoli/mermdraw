@@ -2,7 +2,6 @@
 //! (~/.config/mermdraw/icons) or are vendored into a repository (.mermdraw/icons) so
 //! everyone who opens the docs sees the same icons. A project copy wins.
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,12 +17,7 @@ pub struct Pack {
 }
 
 pub fn global_dir() -> Option<PathBuf> {
-    let base = match env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
-        Some(x) => PathBuf::from(x),
-        None if cfg!(windows) => PathBuf::from(env::var_os("APPDATA")?),
-        None => PathBuf::from(env::var_os("HOME")?).join(".config"),
-    };
-    Some(base.join("mermdraw").join("icons"))
+    Some(crate::config_dir()?.join("icons"))
 }
 
 pub fn project_dir(root: &Path) -> PathBuf {
@@ -120,6 +114,167 @@ pub fn add(spec: &str, dest: &Path) -> Result<(PathBuf, u64), String> {
     Ok((target.clone(), size(&target)))
 }
 
+pub struct Hit {
+    pub pack: String,
+    pub name: String,
+    pub source: &'static str,
+}
+
+/// Icons of the installed packs whose `pack:name` contains every word of `query`, best first: the exact name, then
+/// names starting with the query, then shorter names. Returns at most `limit` hits and the number of matches.
+pub fn search(root: Option<&Path>, query: &str, limit: usize) -> (Vec<Hit>, usize) {
+    let words: Vec<String> =
+        query.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).map(str::to_lowercase).collect();
+    let joined = words.join("-");
+    let mut hits: Vec<(u8, Hit)> = Vec::new();
+    for p in installed(root) {
+        let Ok(text) = fs::read_to_string(&p.path) else { continue };
+        for name in icon_names(&text) {
+            let full = format!("{}:{name}", p.name).to_lowercase();
+            if !words.iter().all(|w| full.contains(w.as_str())) {
+                continue;
+            }
+            let rank = if name == joined || full == joined {
+                0
+            } else if name.starts_with(&joined) {
+                1
+            } else {
+                2
+            };
+            hits.push((rank, Hit { pack: p.name.clone(), name, source: p.source }));
+        }
+    }
+    hits.sort_by(|(ra, a), (rb, b)| {
+        ra.cmp(rb).then(a.name.len().cmp(&b.name.len())).then_with(|| (&a.name, &a.pack).cmp(&(&b.name, &b.pack)))
+    });
+    let total = hits.len();
+    (hits.into_iter().take(limit).map(|(_, h)| h).collect(), total)
+}
+
+/// The icon and alias names of an Iconify icon set: the keys of its `icons` and `aliases` objects.
+fn icon_names(json: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut s = Scan { b: json.as_bytes(), i: 0, depth: 0 };
+    let _ = s.object(&mut |s, key| match key.as_str() {
+        "icons" | "aliases" => s.object(&mut |s, name| {
+            names.push(name);
+            s.skip()
+        }),
+        _ => s.skip(),
+    });
+    names
+}
+
+/// Just enough of a JSON reader to walk an object's keys and skip their values.
+struct Scan<'a> {
+    b: &'a [u8],
+    i: usize,
+    depth: usize,
+}
+
+impl Scan<'_> {
+    fn peek(&mut self) -> Option<u8> {
+        while self.b.get(self.i).is_some_and(|c| c.is_ascii_whitespace()) {
+            self.i += 1;
+        }
+        self.b.get(self.i).copied()
+    }
+
+    fn eat(&mut self, c: u8) -> bool {
+        let hit = self.peek() == Some(c);
+        self.i += hit as usize;
+        hit
+    }
+
+    fn string(&mut self) -> Option<String> {
+        if !self.eat(b'"') {
+            return None;
+        }
+        let mut out = Vec::new();
+        loop {
+            let c = *self.b.get(self.i)?;
+            self.i += 1;
+            match c {
+                b'"' => return String::from_utf8(out).ok(),
+                b'\\' => {
+                    let e = *self.b.get(self.i)?;
+                    self.i += 1;
+                    match e {
+                        b'u' => {
+                            let hex = std::str::from_utf8(self.b.get(self.i..self.i + 4)?).ok()?;
+                            let ch = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32).unwrap_or('\u{fffd}');
+                            self.i += 4;
+                            out.extend_from_slice(ch.encode_utf8(&mut [0; 4]).as_bytes());
+                        }
+                        b'n' => out.push(b'\n'),
+                        b't' => out.push(b'\t'),
+                        b'r' => out.push(b'\r'),
+                        b'b' => out.push(8),
+                        b'f' => out.push(12),
+                        other => out.push(other),
+                    }
+                }
+                c => out.push(c),
+            }
+        }
+    }
+
+    /// Calls `f` with every key of an object; `f` consumes the key's value.
+    fn object(&mut self, f: &mut dyn FnMut(&mut Self, String) -> Option<()>) -> Option<()> {
+        if !self.eat(b'{') {
+            return None;
+        }
+        if self.eat(b'}') {
+            return Some(());
+        }
+        loop {
+            let key = self.string()?;
+            if !self.eat(b':') {
+                return None;
+            }
+            f(self, key)?;
+            if !self.eat(b',') {
+                return self.eat(b'}').then_some(());
+            }
+        }
+    }
+
+    fn skip(&mut self) -> Option<()> {
+        match self.peek()? {
+            b'"' => self.string().map(drop),
+            open @ (b'{' | b'[') => {
+                self.depth += 1;
+                if self.depth > 64 {
+                    return None;
+                }
+                let r = if open == b'{' { self.object(&mut |s, _| s.skip()) } else { self.array() };
+                self.depth -= 1;
+                r
+            }
+            _ => {
+                let start = self.i;
+                while self.b.get(self.i).is_some_and(|c| c.is_ascii_alphanumeric() || b"+-.".contains(c)) {
+                    self.i += 1;
+                }
+                (self.i > start).then_some(())
+            }
+        }
+    }
+
+    fn array(&mut self) -> Option<()> {
+        self.eat(b'[');
+        if self.eat(b']') {
+            return Some(());
+        }
+        loop {
+            self.skip()?;
+            if !self.eat(b',') {
+                return self.eat(b']').then_some(());
+            }
+        }
+    }
+}
+
 pub fn human(bytes: u64) -> String {
     match bytes {
         b if b >= 1 << 20 => format!("{:.1} MB", b as f64 / (1u64 << 20) as f64),
@@ -140,7 +295,7 @@ mod tests {
 
     #[test]
     fn project_packs_shadow_global_ones() {
-        let root = env::temp_dir().join(format!("mermdraw-icons-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("mermdraw-icons-test-{}", std::process::id()));
         fs::create_dir_all(project_dir(&root)).unwrap();
         fs::write(project_dir(&root).join("logos.json"), "{}").unwrap();
         fs::write(project_dir(&root).join("bad name.json"), "{}").unwrap();
@@ -150,6 +305,35 @@ mod tests {
         assert!(packs.iter().all(|p| valid_name(&p.name)));
         assert_eq!(find(&root, "logos"), Some(project_dir(&root).join("logos.json")));
         assert_eq!(find(&root, "../logos"), None);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn reads_iconify_names() {
+        let json = r#"{"prefix":"x","info":{"name":"X","tags":["a",{"b":[1,2.5e3,null]}]},"icons":{"postgresql":{"body":"<g \"q\"/>","width":32},
+            "python":{"body":"<p/>"},"rust\u002dlang":{"body":""}},"aliases":{"postgres":{"parent":"postgresql"}},"width":256,"ok":true}"#;
+        assert_eq!(icon_names(json), vec!["postgresql", "python", "rust-lang", "postgres"]);
+        assert_eq!(icon_names("{\"icons\":[]}"), Vec::<String>::new());
+        assert_eq!(icon_names("not json"), Vec::<String>::new());
+        let deep = format!("{{\"a\":{}{}, \"icons\":{{\"x\":1}}}}", "[".repeat(200), "]".repeat(200));
+        assert_eq!(icon_names(&deep), Vec::<String>::new()); // too deep: gives up instead of overflowing the stack
+    }
+
+    #[test]
+    fn search_ranks_exact_then_prefix_then_short() {
+        let root = std::env::temp_dir().join(format!("mermdraw-search-test-{}", std::process::id()));
+        fs::create_dir_all(project_dir(&root)).unwrap();
+        let pack = r#"{"prefix":"zz-test","icons":{"postgresql-wordmark":{},"postgresql":{},"aws-lambda":{},"google-cloud-run":{}},"aliases":{"postgres":{}}}"#;
+        fs::write(project_dir(&root).join("zz-test.json"), pack).unwrap();
+        let names =
+            |q: &str| -> Vec<String> { search(Some(&root), q, 50).0.into_iter().filter(|h| h.pack == "zz-test").map(|h| h.name).collect() };
+        assert_eq!(names("postgresql"), vec!["postgresql", "postgresql-wordmark"]);
+        assert_eq!(names("Postgres"), vec!["postgres", "postgresql", "postgresql-wordmark"]);
+        assert_eq!(names("cloud run"), vec!["google-cloud-run"]);
+        assert_eq!(names("zz-test:aws"), vec!["aws-lambda"]);
+        assert!(names("kafka").is_empty());
+        let (hits, total) = search(Some(&root), "zz-test", 2);
+        assert!(hits.len() == 2 && total >= 5);
         fs::remove_dir_all(&root).unwrap();
     }
 

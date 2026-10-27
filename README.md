@@ -217,8 +217,11 @@ flowchart TD
 
 ```bash
 mermdraw ls docs/architecture.md                       # inventory: index, type, line range, title
+mermdraw ls docs                                       # every diagram in every markdown file under docs/
 mermdraw cat docs/architecture.md 2 > checkout.mmd     # extract one diagram's source
 mermdraw new docs/adr/0042.md -t sequence --title "Token refresh"
+mermdraw write docs/architecture.md 2 < checkout.mmd   # put it back; canvas positions are kept
+mermdraw ls docs --json                                # the same commands as JSON, for scripts and addons
 ```
 
 ## Reference
@@ -230,7 +233,13 @@ mermdraw new docs/adr/0042.md -t sequence --title "Token refresh"
 mermdraw [PATH]              open a .md/.mmd file or a directory (default: .)
 mermdraw FILE:LINE           open the diagram at LINE (FILE:LINE:COL works too)
 mermdraw ls FILE             list the diagrams in FILE
+mermdraw ls [FILE|DIR]       list the diagrams in FILE, or in every markdown file under DIR (default: .)
 mermdraw cat FILE [N]        print diagram N's source
+mermdraw write FILE N [--base VERSION] < SOURCE
+                             replace diagram N with the source on stdin; its canvas positions are
+                             kept unless the input has its own %% mermdraw:layout comment
+mermdraw write FILE --append [--title TITLE] < SOURCE
+                             append the diagram on stdin; creates FILE if needed
 mermdraw new FILE [-t TYPE] [--title TITLE]
                              append a diagram (flowchart, sequence, class, state, er,
                              architecture, c4, gantt, mindmap); creates FILE if needed
@@ -238,6 +247,13 @@ mermdraw icons [ls]          list installed icon packs
 mermdraw icons add PACK[@VER]... [--vendor]
                              install Iconify packs (logos, devicon, simple-icons, mdi, …)
 mermdraw icons rm PACK... [--vendor]
+mermdraw icons search QUERY [--limit N]
+                             find icons in the installed packs, e.g. "postgres" → logos:postgresql
+mermdraw addons [ls]         list installed addons
+mermdraw addons add NAME... [--version vX.Y.Z]
+                             install official addons from github.com/berttoli/mermdraw-NAME
+mermdraw addons rm NAME...
+mermdraw NAME [ARGS…]        run the addon mermdraw-NAME with ARGS as given
 
   -p, --port N               default 7788 (next free port if taken)
       --no-open              don't open a browser
@@ -245,12 +261,43 @@ mermdraw icons rm PACK... [--vendor]
       --new                  start a new server even if one already serves this folder
       --enable F1,F2         turn feature flags on (see Labs)
       --disable F1,F2        turn feature flags off
+      --json                 JSON output (and JSON errors) for ls, cat, write and icons search
 ```
+
+`write` refuses to save (exit code 3) when the file changed since `--base VERSION`, the `version` that `cat --json`
+reported, or since `write` read it when no `--base` is given. A refused write leaves the file untouched. The `--json`
+output, its exit codes and the addon lookup are a public API, documented in [docs/ADDONS.md](docs/ADDONS.md).
 
 Opening a file serves its git repository (or its folder outside git), so the file picker lists every markdown file
 in the repo and links between files work. Opening a directory serves that directory. If a mermdraw server is already
 running for that folder, a second `mermdraw` opens a tab on it and exits, so one server serves the whole repo; `--new`
 starts a separate one.
+
+</details>
+
+<details>
+<summary><b>Addons</b></summary>
+
+Addons are separate programs that add commands to mermdraw while the core stays a single dependency-free binary.
+Each official addon is released from its own repository, `berttoli/mermdraw-NAME`:
+
+```bash
+mermdraw addons add mcp              # install mermdraw-mcp into ~/.config/mermdraw/addons
+mermdraw addons add mcp --version v0.1.0
+mermdraw addons ls                   # installed addons, and mermdraw-* programs on PATH
+mermdraw mcp                         # run it; every argument after the name goes to the addon
+mermdraw addons rm mcp
+```
+
+`addons add` downloads the release archive for your platform with `curl`, checks it against the release's
+`SHA256SUMS.txt`, verifies its build-provenance attestation with `gh attestation verify` when the GitHub CLI is
+installed (and says so when it isn't), and unpacks it with `tar`. Nothing is installed if a check fails.
+
+`mermdraw NAME` looks for a built-in command first, then for `mermdraw-NAME` in the addons folder, then on `PATH`, and
+only then treats NAME as a path to open, so `mermdraw ./mcp` always opens a folder called `mcp`. Addons get
+`MERMDRAW` (the path of the mermdraw that started them) and `MERMDRAW_VERSION`, and read and write diagrams only
+through mermdraw's `--json` commands, so mermdraw stays the only program that edits your markdown. How to write one is
+in [docs/ADDONS.md](docs/ADDONS.md).
 
 </details>
 
@@ -357,7 +404,7 @@ layers, semantic L1→L2 zoom, cloud import, presentation mode), is in
 Rust (pinned in `rust-toolchain.toml`) and Node ≥ 22 for the JS tests; no other dependencies.
 
 ```bash
-cargo test                                  # Rust unit tests (fence scanner, icon packs)
+cargo test                                  # Rust unit tests (fence scanner, icon packs, addons, SHA-256)
 npm test                                    # parser / serializer / example round-trip tests (no npm deps)
 cargo build --release && tests/smoke.sh     # end-to-end: CLI commands + HTTP API of the real binary
 MERMDRAW_WEB=web cargo run -- examples      # serve web/ from disk: edit JS/CSS, reload the page
@@ -372,7 +419,8 @@ verifies and attests binaries for five targets and opens a draft release; see [d
 `web/model.js` is the heart: markdown block scanning plus a lossless mermaid-flowchart model (parse → edit →
 serialize, including frontmatter styles). `web/canvas.js` is the SVG editor, `web/app.js` the glue (outline, code
 pane, preview, inspector, autosave, sync, Labs), `web/flags.js` the feature-flag registry and `web/icons.js` the
-icon-pack store. `src/main.rs` is the server and CLI, `src/icons.rs` the icon-pack manager.
+icon-pack store. `src/main.rs` is the server and CLI, `src/icons.rs` the icon-pack manager, `src/addons.rs` the addon
+installer and launcher, and `src/sha256.rs` the checksum it verifies downloads with.
 
 ## License
 

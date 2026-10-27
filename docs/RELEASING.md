@@ -43,6 +43,10 @@ minor version (0.1 → 0.2) and patch releases only fix bugs.
 **Covered** by the compatibility promise, because it lives in users' repositories and scripts:
 
 - CLI commands, flags and exit codes.
+- The addon contract in [ADDONS.md](ADDONS.md): how `mermdraw NAME` finds and runs addons, the `--json` commands
+  with their fields and exit codes, and the release layout `mermdraw addons add` downloads. Fields can be added, but
+  not renamed, removed or given another meaning; a change that would break that bumps the `contract` number every
+  JSON output carries.
 - What mermdraw writes into repositories: the canonical structure of the mermaid it serializes, the
   `%% mermdraw:layout id:x,y …` comment, `.mermdraw/config.json`, `.mermdraw/icons/<pack>.json`, and uploads under
   `assets/`.
@@ -89,6 +93,17 @@ scripts/release.sh verify dist/mermdraw-aarch64-apple-darwin.tar.gz
    - Set `version = "X.Y.Z-rc.1"` in `Cargo.toml` and run `cargo build` so `Cargo.lock` follows. The tag must match
      `Cargo.toml` exactly, so every build reports the version it really is (`mermdraw --version` →
      `mermdraw X.Y.Z-rc.1`).
+   - If the release changes anything in [ADDONS.md](ADDONS.md) (the `--json` commands, `write`, addon lookup or
+     `addons add`), run mermdraw-mcp's end-to-end and install tests against this build before tagging:
+
+     ```bash
+     cargo build --release --locked
+     cd ../mermdraw-mcp   # a checkout of berttoli/mermdraw-mcp
+     MERMDRAW_CORE=../mermdraw/target/release/mermdraw MERMDRAW_E2E_REQUIRED=1 cargo test --locked
+     tests/install.sh ../mermdraw/target/release/mermdraw
+     ```
+
+     A breaking change must also bump `CONTRACT` in `src/main.rs`, with a release of mermdraw-mcp that speaks it.
    - Check, commit, push, and wait for CI to go green:
 
      ```bash

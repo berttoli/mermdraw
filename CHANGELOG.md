@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Addons.** `mermdraw NAME [ARGS…]` runs `mermdraw-NAME` from `~/.config/mermdraw/addons` (or `$XDG_CONFIG_HOME`)
+  or from `PATH`, with every argument passed as given and `MERMDRAW` / `MERMDRAW_VERSION` set; on Unix the addon
+  replaces the mermdraw process, so it owns stdin and stdout. Built-in commands come first and paths last, so
+  `mermdraw ./NAME` still opens a folder. `mermdraw addons add|ls|rm` installs official addons from
+  `github.com/berttoli/mermdraw-NAME` releases (`--version vX.Y.Z` for a tag), checked against the release's
+  `SHA256SUMS.txt` and, when `gh` is installed, its build-provenance attestation. The contract is in `docs/ADDONS.md`.
+- **JSON commands.** `ls --json`, `cat --json` and `icons search QUERY --json` print JSON with a `mermdraw` version
+  field; `--json` errors are JSON on stdout too. `cat --json` reports the file's `version` (the editor's `X-Version`)
+  and leaves the `%% mermdraw:layout` comment out of the source, saying in `layout` whether there is one.
+- `mermdraw write FILE N` replaces diagram N with the source on stdin, keeps its canvas positions when the input has
+  no layout comment, and writes atomically through the same code as the editor. It refuses with exit code 3 when the
+  file changed since `--base VERSION` (or since it read the file). `write FILE --append [--title T]` adds a diagram.
+- `mermdraw ls` takes a folder (default `.`) and lists the diagrams of every markdown file under it.
+- `mermdraw icons search QUERY` finds icons in the installed packs.
+- Every JSON output carries `"contract": 1`, the version of the addon contract. Within 0.x the contract only gains
+  fields; a breaking change bumps that number. On Windows, addons can be `mermdraw-NAME.exe` or `mermdraw-NAME.cmd`.
+- `scripts/release.sh package` names archives after the binary (`mermdraw-TARGET`, `mermdraw-mcp-TARGET`, …), so addon
+  repositories use it unchanged. mermdraw's own asset names don't change.
+- `SECURITY.md`: what `addons add` verifies, the editor server's local-only guards, and how to report a vulnerability.
 - `mermdraw FILE:LINE` (or `FILE:LINE:COL`, as editors pass it) opens the diagram at that line, so an editor task
   can jump to the diagram under the cursor. The README has tasks for VS Code / Cursor / Windsurf, Zed and JetBrains.
 - A second `mermdraw` for a folder that a server already serves opens a tab on that server and exits, so one server
