@@ -251,6 +251,7 @@ in the repo and links between files work. Opening a directory serves that direct
 | Do this | To |
 | --- | --- |
 | double-click empty space, or drag a shape from the palette | add a node |
+| double-click a node, a line or a group (or press and hold a group) | edit its label or title; a line without a label gets one |
 | drag a node's ● handle onto another node or group | connect them (drop on empty space to create the next node) |
 | <kbd>⌥</kbd>-drag a node | connect from it |
 | <kbd>Tab</kbd> on a node (also while typing its label) | add a connected node downstream |

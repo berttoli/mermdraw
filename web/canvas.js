@@ -77,7 +77,6 @@ export class Canvas {
     this.svg.addEventListener('pointerdown', (e) => this.onDown(e));
     window.addEventListener('pointermove', (e) => this.onMove(e));
     window.addEventListener('pointerup', (e) => this.onUp(e));
-    this.svg.addEventListener('dblclick', (e) => this.onDbl(e));
     this.svg.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     root.addEventListener('keydown', (e) => this.onKey(e));
     root.addEventListener('keyup', (e) => e.key === ' ' && (this.space = false));
@@ -534,6 +533,18 @@ export class Canvas {
     }
     if (e.button !== 0) return;
     const h = this.hit(e);
+    // Double-clicks are detected here: a click re-renders what it selects, and the browser's dblclick only
+    // fires when both clicks land on the same element, so it never reached nodes, edges or groups. The editor
+    // opens on release, like dblclick, so this press's focus change can't close it again.
+    const key = h.handle ? null : (h.node ?? (h.edge != null ? `edge ${h.edge}` : h.group) ?? '');
+    const last = this.lastDown;
+    this.lastDown = { t: e.timeStamp, x: e.clientX, y: e.clientY, key };
+    if (key !== null && last?.key === key && e.timeStamp - last.t < 450 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 6
+      && !(e.shiftKey || e.altKey || e.metaKey || e.ctrlKey)) {
+      this.lastDown = null;
+      this.dblPending = e;
+      return;
+    }
     if (h.handle || (h.node && e.altKey)) {
       this.drag = { type: 'connect', from: h.handle || h.node, cur: w, start: w, moved: false };
       return;
@@ -561,8 +572,16 @@ export class Canvas {
       return;
     }
     if (h.group && !e.shiftKey) {
-      if (!this.sel.groups.has(h.group)) this.select({ groups: [h.group] });
-      this.beginMove(w, null, h.group, false);
+      const gid = h.group;
+      if (!this.sel.groups.has(gid)) this.select({ groups: [gid] });
+      this.beginMove(w, null, gid, false);
+      // press and hold without moving to rename the group
+      const d = this.drag;
+      setTimeout(() => {
+        if (this.drag !== d || d.moved) return;
+        this.drag = null;
+        this.editLabel('group', gid);
+      }, 550);
       return;
     }
     if (e.shiftKey) this.drag = { type: 'marquee', start: w, cur: w, add: true };
@@ -680,6 +699,11 @@ export class Canvas {
   }
 
   onUp(e) {
+    if (this.dblPending) {
+      const down = this.dblPending;
+      this.dblPending = null;
+      return this.onDbl(down);
+    }
     const d = this.drag;
     if (!d) return;
     this.drag = null;
