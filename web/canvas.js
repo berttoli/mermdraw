@@ -250,6 +250,12 @@ export class Canvas {
     return x1 === Infinity ? null : { x1, y1, x2, y2 };
   }
 
+  /** The paper card behind a themed diagram: its bounds plus a margin (null when unthemed or empty). */
+  paperBox() {
+    const b = this.paper && this.bounds();
+    return b ? { x1: b.x1 - 36, y1: b.y1 - 36, x2: b.x2 + 36, y2: b.y2 + 36 } : null;
+  }
+
   overlaps(p, s, skip) {
     for (const n of this.m.nodes) {
       if (n.id === skip || !this.m.layout[n.id]) continue;
@@ -316,7 +322,7 @@ export class Canvas {
 
   fit() {
     this.computeGroupBoxes();
-    const b = this.bounds();
+    const b = this.paperBox() || this.bounds();
     const r = this.svg.getBoundingClientRect();
     if (!b || !r.width) {
       this.view = { x: r.width / 2, y: r.height / 2, k: 1 };
@@ -362,16 +368,18 @@ export class Canvas {
     const vars = {
       '--cv-node-fill': 'primaryColor', '--cv-node-stroke': 'primaryBorderColor', '--cv-text': 'primaryTextColor',
       '--cv-edge': 'lineColor', '--cv-group-fill': 'clusterBkg', '--cv-group-stroke': 'clusterBorder',
-      '--cv-label-bg': 'edgeLabelBackground', '--cv-bg': 'background',
+      '--cv-label-bg': 'edgeLabelBackground',
     };
-    // A themed diagram sits on its own paper so its text colours stay readable in either UI theme.
-    const paper = pal && !pal.background && luminance(pal.primaryColor);
-    const derived = paper == null || paper === false ? {} : paper > 150 ? { background: '#FFFFFF', dot: '#DCDFE9' } : { background: '#121A2C', dot: '#27314B' };
-    for (const [prop, key] of Object.entries({ ...vars, '--cv-dot': 'dot' })) {
-      const v = pal?.[key] ?? derived[key];
-      if (typeof v === 'string' && /^[#\w(),.%\s-]+$/.test(v)) this.root.style.setProperty(prop, v);
+    const safe = (v) => typeof v === 'string' && /^[#\w(),.%\s-]+$/.test(v);
+    for (const [prop, key] of Object.entries(vars)) {
+      if (safe(pal?.[key])) this.root.style.setProperty(prop, pal[key]);
       else this.root.style.removeProperty(prop);
     }
+    // A themed diagram sits on a paper card of its own (the theme's background, or white / navy to suit its colours),
+    // so its text stays readable while the canvas around it follows the UI theme.
+    const lum = pal && luminance(pal.primaryColor);
+    const paper = pal?.background ?? (lum == null || lum === false ? null : lum > 150 ? '#FFFFFF' : '#121A2C');
+    this.paper = safe(paper) ? paper : null;
     this.svg.classList.toggle('sketch', style.look === 'handDrawn');
   }
 
@@ -385,8 +393,10 @@ export class Canvas {
     this.empty.style.display = m.nodes.length || m.groups.length ? 'none' : '';
     const boxes = this.computeGroupBoxes();
     const out = [];
+    const card = this.paperBox();
+    if (card) out.push(`<rect class="paper" x="${card.x1}" y="${card.y1}" width="${card.x2 - card.x1}" height="${card.y2 - card.y1}" rx="18" style="fill:${this.paper}"/>`);
 
-    const groups = [...m.groups].sort((a, b) => (this.gdepth.get(a.id) || 0) - (this.gdepth.get(b.id) || 0));
+    const groups =[...m.groups].sort((a, b) => (this.gdepth.get(a.id) || 0) - (this.gdepth.get(b.id) || 0));
     for (const g of groups) {
       const b = boxes.get(g.id);
       if (!b) continue;

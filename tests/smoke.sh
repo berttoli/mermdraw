@@ -80,7 +80,7 @@ pass "serves every web module"
 expect "serves mermaid gzipped" "$(curl -s -D - -o /dev/null "$U/vendor/mermaid.min.js" | tr -d '\r')" "Content-Encoding: gzip"
 expect "passes command-line flags" "$(curl -fs "$U/api/info")" '"flags":{"themes":true,"icons":false}'
 expect "serves project config" "$(curl -fs "$U/api/config")" '"sticky-notes":true'
-expect "lists markdown files" "$(curl -fs "$U/api/files")" '"path":"architecture.md","diagrams":3'
+expect "lists markdown files" "$(curl -fs "$U/api/files")" '"path":"architecture.md","diagrams":3,"title":"Shop Platform Architecture"'
 expect "lists icon packs" "$(curl -fs "$U/api/icons")" '"name":"demo","source":"project"'
 expect "serves an icon pack" "$(curl -fs "$U/api/icons/demo.json")" '"prefix":"demo"'
 [[ "$(status GET "$U/api/icons/nope.json")" == 404 ]] || fail "missing pack should 404"

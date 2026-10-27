@@ -507,8 +507,14 @@ fn route(s: &mut TcpStream, st: &State, req: &Req) -> io::Result<()> {
             let items: Vec<String> = files
                 .iter()
                 .map(|rel| {
-                    let n = fs::read_to_string(st.root.join(rel)).map(|t| md::blocks(&t, md::is_mmd(rel)).len()).unwrap_or(0);
-                    format!(r#"{{"path":{},"diagrams":{n}}}"#, json_str(rel))
+                    let Ok(text) = fs::read_to_string(st.root.join(rel)) else {
+                        return format!(r#"{{"path":{},"diagrams":0,"title":null}}"#, json_str(rel));
+                    };
+                    let mmd = md::is_mmd(rel);
+                    let blocks = md::blocks(&text, mmd);
+                    let title = if mmd { blocks.first().and_then(|b| b.title.clone()) } else { md::title(&text) };
+                    let title = title.map_or("null".to_string(), |t| json_str(&t));
+                    format!(r#"{{"path":{},"diagrams":{},"title":{title}}}"#, json_str(rel), blocks.len())
                 })
                 .collect();
             respond(s, "200 OK", "application/json", &[], format!(r#"{{"files":[{}]}}"#, items.join(",")).as_bytes())

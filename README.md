@@ -260,7 +260,7 @@ in the repo and links between files work. Opening a directory serves that direct
 | scroll / <kbd>space</kbd>-drag, <kbd>⌘</kbd>-scroll or pinch, <kbd>0</kbd> | pan, zoom, fit |
 | <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>, <kbd>⌘S</kbd> | undo / redo, save now |
 | <kbd>⌥1</kbd>–<kbd>⌥4</kbd>, <kbd>?</kbd> | Canvas / Split / Preview / Markdown view, shortcut help |
-| <kbd>⌘\\</kbd> | show or hide the outline |
+| <kbd>⌘P</kbd>, <kbd>⌘\\</kbd> / <kbd>⌥⌘\\</kbd> | switch file, show or hide the outline / the inspector and code |
 
 Statements mermdraw doesn't model on the canvas (comments, `accTitle`, click callbacks…) are kept verbatim.
 

@@ -1052,7 +1052,7 @@ export const STYLE_PRESETS = {
   '': { name: 'Mermaid default' },
   neutral: { name: 'Mermaid neutral', theme: 'neutral', canvas: { primaryColor: '#f4f4f4', primaryBorderColor: '#999999', primaryTextColor: '#333333', lineColor: '#666666', clusterBkg: '#fafafa', clusterBorder: '#cccccc' } },
   forest: { name: 'Mermaid forest', theme: 'forest', canvas: { primaryColor: '#cde498', primaryBorderColor: '#13540c', primaryTextColor: '#000000', lineColor: '#008000', clusterBkg: '#cdffb2', clusterBorder: '#6eaa49' } },
-  dark: { name: 'Mermaid dark', theme: 'dark', canvas: { primaryColor: '#1f2020', primaryBorderColor: '#cccccc', primaryTextColor: '#e0e0e0', lineColor: '#d3d3d3', clusterBkg: '#262a33', clusterBorder: '#444a58', background: '#333333' } },
+  dark: { name: 'Mermaid dark', theme: 'dark', canvas: { primaryColor: '#1f2020', primaryBorderColor: '#cccccc', primaryTextColor: '#e0e0e0', lineColor: '#d3d3d3', clusterBkg: '#262a33', clusterBorder: '#444a58', edgeLabelBackground: '#333333', background: '#333333' } },
   blueprint: {
     name: 'Blueprint',
     theme: 'base',

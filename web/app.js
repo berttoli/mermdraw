@@ -41,6 +41,7 @@ const S = {
   view: store.get('view', 'split'),
   autosave: store.get('autosave', true),
   outline: store.get('outline', true),
+  panel: store.get('panel', true),
   dirty: false,
   editSeq: 0,
   scope: 'block',
@@ -83,7 +84,8 @@ async function init() {
   new ResizeObserver(fitPalette).observe($('#canvas-wrap'));
   bindUI();
   initTooltips();
-  setOutline(S.outline);
+  setPane('outline', S.outline);
+  setPane('panel', S.panel);
   setView(S.view);
   $('#autosave').checked = S.autosave;
   try {
@@ -118,14 +120,6 @@ async function refreshFiles() {
   } catch {
     S.files = [];
   }
-  const sel = $('#file');
-  const paths = S.files.map((f) => f.path);
-  if (S.path && !paths.includes(S.path)) paths.unshift(S.path);
-  sel.innerHTML = paths.map((p) => {
-    const f = S.files.find((x) => x.path === p);
-    return `<option value="${esc(p)}">${esc(p)}${f?.diagrams ? ` (${f.diagrams})` : ''}</option>`;
-  }).join('');
-  if (S.path) sel.value = S.path;
 }
 
 async function openFile(path, index = 0) {
@@ -144,8 +138,8 @@ async function openFile(path, index = 0) {
   S.scope = 'block';
   setStatus('saved');
   rescan();
-  if (![...$('#file').options].some((o) => o.value === path)) await refreshFiles();
-  $('#file').value = path;
+  if (!S.files.some((f) => f.path === path)) await refreshFiles();
+  renderFileButton();
   document.title = `${path.split('/').pop()} · mermdraw`;
   if (S.view === 'doc') docTa.value = S.text;
   selectBlock(Math.max(0, Math.min(index, S.scan.blocks.length - 1)), { fit: true });
@@ -262,19 +256,114 @@ function setView(v) {
 }
 let docDirty = false;
 
-/** Shows or hides the outline sidebar; `animate` slides it (only for user toggles, not on load). */
-function setOutline(open, animate = false) {
-  S.outline = open;
-  store.set('outline', open);
+const PANES = {
+  outline: { pane: '#side', button: '#side-toggle', closed: 'side-closed', name: 'outline' },
+  panel: { pane: '#right', button: '#right-toggle', closed: 'right-closed', name: 'inspector and code' },
+};
+
+/** Shows or hides a side pane (outline or panel); `animate` slides it (only for user toggles, not on load). */
+function setPane(key, open, animate = false) {
+  const p = PANES[key];
+  S[key] = open;
+  store.set(key, open);
   const main = $('.main');
   main.classList.toggle('anim', animate);
-  main.classList.toggle('side-closed', !open);
-  $('#side').inert = !open;
-  const b = $('#side-toggle');
-  const label = open ? 'Hide outline' : 'Show outline';
+  main.classList.toggle(p.closed, !open);
+  $(p.pane).inert = !open;
+  const b = $(p.button);
+  const label = `${open ? 'Hide' : 'Show'} ${p.name}`;
   b.dataset.tip = label;
   b.setAttribute('aria-label', label);
   b.setAttribute('aria-expanded', String(open));
+}
+
+// ------------------------------------------------------------------ file picker
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const FOLDER_ICON = '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M1.75 4.25a1 1 0 0 1 1-1h3.1l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z"/></svg>';
+const DOC_ICON = '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M3.75 1.75h5.5l3 3v9.5h-8.5z"/><path d="M9.25 1.75v3h3"/></svg>';
+let fileActive = 0;
+
+/** The top-bar button: the current file's folder (muted) and name. */
+function renderFileButton() {
+  const p = S.path || '';
+  const i = p.lastIndexOf('/');
+  $('#file .fb-dir').textContent = i < 0 ? '' : p.slice(0, i).replaceAll('/', ' / ') + ' /';
+  $('#file .fb-name').textContent = p.slice(i + 1);
+}
+
+/** Files matching the search box: every word must appear in the path or the title. */
+function matchingFiles() {
+  const words = $('#file-q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const files = [...S.files];
+  if (S.path && !files.some((f) => f.path === S.path)) files.unshift({ path: S.path, diagrams: S.scan?.blocks.length ?? 0, title: null });
+  return files.filter((f) => words.every((w) => `${f.path} ${f.title || ''}`.toLowerCase().includes(w)));
+}
+
+/** The picker list: one group per folder (the root first), each file with its title, name and diagram count. */
+function renderFileList() {
+  const files = matchingFiles();
+  const groups = new Map();
+  for (const f of files) {
+    const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push(f);
+  }
+  const dirs = [...groups.keys()].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
+  let n = 0;
+  $('#file-list').innerHTML = dirs.map((dir) => {
+    const label = dir ? dir.replaceAll('/', ' / ') : S.info.rootName;
+    const items = groups.get(dir).map((f) => {
+      const name = f.path.slice(f.path.lastIndexOf('/') + 1);
+      const cur = f.path === S.path;
+      return `<div class="fo${cur ? ' current' : ''}${f.diagrams ? '' : ' none'}" role="option" id="fo-${n++}" data-path="${esc(f.path)}" aria-selected="${cur}">
+        <span class="fo-ico">${DOC_ICON}</span>
+        <span class="fo-main"><span class="fo-title">${esc(f.title || name)}</span>${f.title ? `<span class="fo-file">${esc(name)}</span>` : ''}</span>
+        <span class="fo-count">${f.diagrams ? plural(f.diagrams, 'diagram') : 'no diagrams'}</span>
+      </div>`;
+    }).join('');
+    return `<div class="fg" role="presentation">${FOLDER_ICON}<span>${esc(label)}</span></div>${items}`;
+  }).join('') || `<div class="fl-empty">No files match “${esc($('#file-q').value)}”</div>`;
+  $('#file-count').textContent = `${plural(files.length, 'markdown file')} in ${S.info.rootName}`;
+}
+
+function setFileActive(i, scroll = true) {
+  const opts = $$('#file-list .fo');
+  if (!opts.length) return $('#file-q').removeAttribute('aria-activedescendant');
+  fileActive = (i + opts.length) % opts.length;
+  opts.forEach((o, k) => o.classList.toggle('active', k === fileActive));
+  $('#file-q').setAttribute('aria-activedescendant', opts[fileActive].id);
+  if (scroll) opts[fileActive].scrollIntoView({ block: 'nearest' });
+}
+
+async function openFilePicker() {
+  const menu = $('#file-menu');
+  if (!menu.hidden) return closeFilePicker();
+  await refreshFiles(); // pick up files created since the last look
+  $('#file-q').value = '';
+  renderFileList();
+  menu.hidden = false;
+  const r = $('#file').getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${r.bottom + 6}px`;
+  $('#file').setAttribute('aria-expanded', 'true');
+  setFileActive(Math.max(0, $$('#file-list .fo').findIndex((o) => o.dataset.path === S.path)));
+  $('#file-q').focus();
+}
+
+function closeFilePicker(refocus = true) {
+  if ($('#file-menu').hidden) return;
+  $('#file-menu').hidden = true;
+  $('#file').setAttribute('aria-expanded', 'false');
+  if (refocus) $('#file').focus();
+}
+
+function pickFile(path) {
+  closeFilePicker(false);
+  if (path === S.path) return;
+  S.nav = [];
+  updateBack();
+  openFile(path).then(updateUrl);
 }
 
 // ------------------------------------------------------------------ outline
@@ -1268,11 +1357,36 @@ function pickIcon(ref) {
 }
 
 function bindUI() {
-  $('#file').addEventListener('change', (e) => {
-    S.nav = [];
-    updateBack();
-    openFile(e.target.value).then(updateUrl);
+  $('#file').addEventListener('click', openFilePicker);
+  $('#file-q').addEventListener('input', () => {
+    renderFileList();
+    setFileActive(0);
   });
+  $('#file-q').addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFileActive(fileActive + (e.key === 'ArrowDown' ? 1 : -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const o = $$('#file-list .fo')[fileActive];
+      if (o) pickFile(o.dataset.path);
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeFilePicker();
+    }
+  });
+  $('#file-list').addEventListener('click', (e) => {
+    const o = e.target.closest('.fo');
+    if (o) pickFile(o.dataset.path);
+  });
+  $('#file-list').addEventListener('pointermove', (e) => {
+    const o = e.target.closest('.fo');
+    if (o && !o.classList.contains('active')) setFileActive($$('#file-list .fo').indexOf(o), false);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('#file-menu, #file')) closeFilePicker(false);
+  });
+  window.addEventListener('resize', () => closeFilePicker(false));
   $('#back').addEventListener('click', goBack);
   $('#labs').addEventListener('click', () => {
     renderLabs();
@@ -1292,7 +1406,6 @@ function bindUI() {
       if (e.target === modal || e.target.closest('[data-close]')) modal.hidden = true;
     });
   }
-  $('#file').addEventListener('focus', () => refreshFiles());
   $$('#views button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   $('#autosave').addEventListener('change', (e) => {
     S.autosave = e.target.checked;
@@ -1310,7 +1423,8 @@ function bindUI() {
     applyTheme(next);
   });
   $('#help').addEventListener('click', () => ($('#help-modal').hidden = false));
-  $('#side-toggle').addEventListener('click', () => setOutline(!S.outline, true));
+  $('#side-toggle').addEventListener('click', () => setPane('outline', !S.outline, true));
+  $('#right-toggle').addEventListener('click', () => setPane('panel', !S.panel, true));
   $('#add-diagram').addEventListener('click', () => {
     const f = $('#new-form');
     f.hidden = !f.hidden;
@@ -1406,11 +1520,19 @@ function bindUI() {
       e.preventDefault();
       return setView(['canvas', 'split', 'preview', 'doc'][+e.code.slice(5) - 1]);
     }
-    if (mod && e.key === '\\') {
+    if (mod && (e.key === '\\' || e.code === 'Backslash')) {
+      // ⌘\ outline, ⌥⌘\ inspector and code (on a Mac ⌥ changes e.key, so the physical key counts too)
       e.preventDefault();
-      return setOutline(!S.outline, true);
+      return e.altKey ? setPane('panel', !S.panel, true) : setPane('outline', !S.outline, true);
     }
-    if (e.key === 'Escape') $$('.modal').forEach((m) => (m.hidden = true));
+    if (mod && !e.shiftKey && e.key.toLowerCase() === 'p') {
+      e.preventDefault();
+      return openFilePicker();
+    }
+    if (e.key === 'Escape') {
+      $$('.modal').forEach((m) => (m.hidden = true));
+      closeFilePicker(false);
+    }
     if (typing(e.target)) return;
     if (mod && e.key === '[') {
       e.preventDefault();

@@ -82,6 +82,38 @@ pub fn blocks(text: &str, whole_file: bool) -> Vec<Block> {
 }
 
 /// Returns (diagram keyword, frontmatter title).
+/// The document's first `# ` heading outside code fences (shown in the file picker).
+pub fn title(text: &str) -> Option<String> {
+    let mut fence: Option<(char, usize)> = None;
+    for line in text.lines() {
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        let rest = line.trim_start_matches(' ');
+        if indent > 3 {
+            continue;
+        }
+        if let Some(fc @ ('`' | '~')) = rest.chars().next() {
+            let n = rest.chars().take_while(|c| *c == fc).count();
+            if n >= 3 {
+                match fence {
+                    None if !(fc == '`' && rest[n..].contains('`')) => fence = Some((fc, n)),
+                    Some((f, m)) if f == fc && n >= m && rest[n..].trim().is_empty() => fence = None,
+                    _ => {}
+                }
+                continue;
+            }
+        }
+        if fence.is_none() {
+            if let Some(t) = rest.strip_prefix("# ") {
+                let t = t.trim().trim_end_matches('#').trim();
+                if !t.is_empty() {
+                    return Some(t.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn describe(src: &str) -> (String, Option<String>) {
     let mut title = None;
     let mut in_fm = false;
@@ -167,6 +199,13 @@ mod tests {
         let b = blocks("- item\n  ```mermaid\n  graph TD\n    A\n  ```\n", false);
         assert_eq!(b[0].source, "graph TD\n  A");
         assert_eq!(b[0].kind, "graph");
+    }
+
+    #[test]
+    fn title_is_the_first_h1_outside_fences() {
+        assert_eq!(title("intro\n```bash\n# not a title\n```\n## Sub\n# Real title #\n# Second\n").as_deref(), Some("Real title"));
+        assert_eq!(title("## Only h2\n#hashtag\n").as_deref(), None);
+        assert_eq!(title("~~~~\n# inside\n~~~\n# still inside\n~~~~\n# after\n").as_deref(), Some("after"));
     }
 
     #[test]
