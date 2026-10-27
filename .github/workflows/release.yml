@@ -93,13 +93,19 @@ jobs:
           path: dist
           pattern: mermdraw-*
           merge-multiple: true
+      - name: Installers
+        # release files, so releases/latest/download/install.sh is the script that ships with the latest release
+        run: cp scripts/install.sh scripts/install.ps1 dist/
       - name: Checksums
         working-directory: dist
-        run: sha256sum mermdraw-* | tee SHA256SUMS.txt
+        run: sha256sum mermdraw-* install.sh install.ps1 | tee SHA256SUMS.txt
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: dist/mermdraw-*
+          subject-path: |
+            dist/mermdraw-*
+            dist/install.sh
+            dist/install.ps1
       - name: Release notes
         run: scripts/release.sh notes "${{ needs.check.outputs.version }}" | tee notes.md
       - name: Create draft release

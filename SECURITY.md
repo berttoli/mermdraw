@@ -2,9 +2,15 @@
 
 ## Supported versions
 
-Only the latest release gets security fixes: 0.1.x today. To update, download it again from the
+Only the latest release gets security fixes: 0.1.x today. To update, run the installer from the
+[README](README.md#install) again, download the release from the
 [releases page](https://github.com/berttoli/mermdraw/releases), or run
 `cargo install --git https://github.com/berttoli/mermdraw --force`.
+
+The installers check what they download the same way `addons add` does (below): the SHA-256 against the release's
+`SHA256SUMS.txt` always, and the build-provenance attestation when `gh` is installed and logged in. `curl … | sh` runs
+the script as it arrives, so to check the installer itself, download `install.sh` first and verify it like an archive
+([docs/RELEASING.md](docs/RELEASING.md#verifying-a-release)) before running it.
 
 ## Reporting a vulnerability
 

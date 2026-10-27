@@ -29,11 +29,16 @@ flowchart LR
 | macOS, Apple silicon | `mermdraw-aarch64-apple-darwin.tar.gz` |
 | macOS, Intel | `mermdraw-x86_64-apple-darwin.tar.gz` |
 | Windows x64 | `mermdraw-x86_64-pc-windows-msvc.zip` |
-| All of the above | `SHA256SUMS.txt`, plus a signed build-provenance attestation per archive |
+| macOS and Linux installer | `install.sh` (a copy of [`scripts/install.sh`](../scripts/install.sh)) |
+| Windows installer | `install.ps1` (a copy of [`scripts/install.ps1`](../scripts/install.ps1)) |
+| All of the above | `SHA256SUMS.txt`, plus a signed build-provenance attestation per file |
 
 Each archive holds one folder, `mermdraw-<target>/`, with the binary, `README.md`, `LICENSE` and `CHANGELOG.md`. Asset
 names carry no version, so `https://github.com/berttoli/mermdraw/releases/latest/download/<asset>` always points at the
-newest stable release (drafts and pre-releases are skipped).
+newest stable release (drafts and pre-releases are skipped). That's how the installers work: the README's
+`curl … | sh` fetches the latest release's `install.sh`, which in turn downloads that release's archive for the
+machine it runs on. Both installers are tested in CI ([`tests/installer.sh`](../tests/installer.sh) and
+[`tests/installer.ps1`](../tests/installer.ps1)) against a local copy of a release.
 
 ## Versioning
 
@@ -145,6 +150,18 @@ gh attestation verify mermdraw-aarch64-apple-darwin.tar.gz -R berttoli/mermdraw
 ```
 
 The attestation proves the archive was built by this repository's release workflow from the tagged commit.
+
+Then install the published release the way the README tells users to, on a machine (or in a `HOME`) without mermdraw:
+
+```bash
+curl -fsSL https://github.com/berttoli/mermdraw/releases/latest/download/install.sh | sh
+```
+
+For a release candidate, which `latest` skips, fetch the installer from its tag and pass the tag along:
+
+```bash
+curl -fsSL https://github.com/berttoli/mermdraw/releases/download/vX.Y.Z-rc.1/install.sh | sh -s -- --version vX.Y.Z-rc.1
+```
 
 ## When something goes wrong
 

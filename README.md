@@ -82,8 +82,48 @@ mermdraw docs/architecture.md        # opens the editor in your browser
 
 ## Install
 
-Download a binary from the [releases page](https://github.com/berttoli/mermdraw/releases). The Linux builds are static
-and run on any distro. Asset names don't change between versions, so this always fetches the latest stable release:
+On macOS and Linux:
+
+```bash
+curl -fsSL https://github.com/berttoli/mermdraw/releases/latest/download/install.sh | sh
+```
+
+On Windows, in PowerShell or a command prompt:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/berttoli/mermdraw/releases/latest/download/install.ps1 | iex"
+```
+
+The installer picks the build for your OS and processor and checks it against the release's `SHA256SUMS.txt`. If the
+GitHub CLI (`gh`) is installed and logged in, it also verifies the build's signed provenance attestation. It puts
+`mermdraw` in `~/.local/bin` and adds that folder to your PATH: with a line in your shell's startup file (`.zshrc`,
+`.bash_profile` or `.bashrc`, fish's `conf.d`, or `.profile`), or in your user PATH on Windows. Open a new terminal
+afterwards. Run it again to update.
+
+| To | macOS and Linux | Windows (set before running) |
+| --- | --- | --- |
+| install a specific release | `… \| sh -s -- --version v0.2.0` | `$env:MERMDRAW_INSTALL_VERSION = "v0.2.0"` |
+| install into another folder | `… \| sh -s -- --dir ~/bin` | `$env:MERMDRAW_INSTALL_DIR = "C:\tools"` |
+| leave your PATH settings alone | `… \| sh -s -- --no-modify-path` | `$env:MERMDRAW_NO_MODIFY_PATH = 1` |
+
+Both scripts are short and published with each release (and in [`scripts/`](scripts)), so you can read them before
+running them. To uninstall, delete `~/.local/bin/mermdraw` (`mermdraw.exe` on Windows) and the PATH line the installer
+added, marked `# added by the mermdraw installer`.
+
+The editor opens in your browser and needs a current Chrome, Edge or Firefox, or Safari 17.4 or later (mermaid 12's
+minimum).
+
+Optional, for L2 diagrams with product logos:
+
+```bash
+mermdraw icons add logos devicon            # into ~/.config/mermdraw/icons, available everywhere
+mermdraw icons add logos --vendor           # or into this repo's .mermdraw/icons so teammates get them too
+```
+
+### Download a binary yourself
+
+Get one from the [releases page](https://github.com/berttoli/mermdraw/releases). The Linux builds are static and run on
+any distro. Asset names don't change between versions, so this always fetches the latest stable release:
 
 ```bash
 # pick yours: aarch64-apple-darwin, x86_64-apple-darwin, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
@@ -100,20 +140,10 @@ On Windows, download `mermdraw-x86_64-pc-windows-msvc.zip`. Every archive is lis
 signed build-provenance attestation (`gh attestation verify <archive> -R berttoli/mermdraw`). If macOS refuses to open a
 binary downloaded in a browser, run `xattr -d com.apple.quarantine mermdraw`.
 
-The editor opens in your browser and needs a current Chrome, Edge or Firefox, or Safari 17.4 or later (mermaid 12's
-minimum).
-
-Or build it with Rust:
+### Build it with Rust
 
 ```bash
 cargo install --git https://github.com/berttoli/mermdraw
-```
-
-Optional, for L2 diagrams with product logos:
-
-```bash
-mermdraw icons add logos devicon            # into ~/.config/mermdraw/icons, available everywhere
-mermdraw icons add logos --vendor           # or into this repo's .mermdraw/icons so teammates get them too
 ```
 
 ## Quick start
@@ -407,6 +437,7 @@ Rust (pinned in `rust-toolchain.toml`) and Node ≥ 22 for the JS tests; no othe
 cargo test                                  # Rust unit tests (fence scanner, icon packs, addons, SHA-256)
 npm test                                    # parser / serializer / example round-trip tests (no npm deps)
 cargo build --release && tests/smoke.sh     # end-to-end: CLI commands + HTTP API of the real binary
+tests/installer.sh                          # install.sh against a local copy of a release
 MERMDRAW_WEB=web cargo run -- examples      # serve web/ from disk: edit JS/CSS, reload the page
 node scripts/screenshots.mjs                # regenerate the README images with headless Chrome
 ./scripts/update-mermaid.sh 12.2.0          # re-vendor mermaid

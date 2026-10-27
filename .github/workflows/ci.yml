@@ -43,6 +43,17 @@ jobs:
       - name: Smoke test (CLI + HTTP API)
         if: runner.os != 'Windows'
         run: tests/smoke.sh target/release/mermdraw
+      - name: Installer (install.sh)
+        if: runner.os != 'Windows'
+        run: tests/installer.sh target/release/mermdraw
+      - name: Installer (install.ps1, Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: tests/installer.ps1 target/release/mermdraw.exe
+      - name: Installer (install.ps1, PowerShell 7)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: tests/installer.ps1 target/release/mermdraw.exe
 
   web:
     name: Web model · Node ${{ matrix.node }}

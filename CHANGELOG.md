@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **One-line install.** `curl -fsSL https://github.com/berttoli/mermdraw/releases/latest/download/install.sh | sh` on
+  macOS and Linux, and `powershell -ExecutionPolicy Bypass -c "irm …/install.ps1 | iex"` on Windows. The installer
+  picks the build for the machine, checks it against `SHA256SUMS.txt` (and its attestation when `gh` is logged in),
+  installs it into `~/.local/bin` and adds that folder to the PATH. `--version`, `--dir` and `--no-modify-path` (or
+  `MERMDRAW_INSTALL_VERSION`, `MERMDRAW_INSTALL_DIR` and `MERMDRAW_NO_MODIFY_PATH=1`) change that. Both scripts are
+  published with every release, covered by its checksums and attestation, and tested in CI.
 - **Addons.** `mermdraw NAME [ARGS…]` runs `mermdraw-NAME` from `~/.config/mermdraw/addons` (or `$XDG_CONFIG_HOME`)
   or from `PATH`, with every argument passed as given and `MERMDRAW` / `MERMDRAW_VERSION` set; on Unix the addon
   replaces the mermdraw process, so it owns stdin and stdout. Built-in commands come first and paths last, so
