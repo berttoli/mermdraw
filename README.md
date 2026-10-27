@@ -66,8 +66,8 @@ mermdraw docs/architecture.md        # opens the editor in your browser
   Kubernetes, Cloud Run, Okta, Grafana, Proxmox…), globally or vendored into the repo. Find them with a searchable picker.
 - **Drill-down:** link a node to another diagram (`./l2-platform.md#2`). <kbd>⌘</kbd>-click drills in, and a
   **← back** chip (<kbd>⌘[</kbd>) returns.
-- **Diagram styles** (Labs): palettes, a hand-drawn look and orthogonal lines, written as mermaid frontmatter config,
-  so GitHub renders them too.
+- **Diagram styles** (Labs): palettes, neo / classic / hand-drawn looks and orthogonal lines, written as mermaid
+  frontmatter config, so GitHub renders them too.
 
 **Small and safe**
 - One ~2.2 MB std-only Rust binary: no runtime, no dependencies, starts instantly. `--app` opens a chromeless window.
@@ -93,7 +93,7 @@ sudo mv "mermdraw-$target/mermdraw" /usr/local/bin/
 ```
 
 `latest` skips pre-releases. To try a release candidate, put its tag in the URL instead, e.g.
-`https://github.com/berttoli/mermdraw/releases/download/v0.1.0-rc.3/mermdraw-$target.tar.gz`, or grab it from the
+`https://github.com/berttoli/mermdraw/releases/download/v0.1.0-rc.4/mermdraw-$target.tar.gz`, or grab it from the
 [releases page](https://github.com/berttoli/mermdraw/releases); `mermdraw --version` tells you which build you have.
 
 On Windows, download `mermdraw-x86_64-pc-windows-msvc.zip`. Every archive is listed in `SHA256SUMS.txt` and carries a
