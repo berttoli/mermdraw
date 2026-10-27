@@ -86,6 +86,14 @@ expect "serves an icon pack" "$(curl -fs "$U/api/icons/demo.json")" '"prefix":"d
 [[ "$(status GET "$U/api/icons/nope.json")" == 404 ]] || fail "missing pack should 404"
 pass "missing icon pack is a 404"
 
+# FILE:LINE, and a second `mermdraw` for the same folder reusing this server instead of starting one
+line="$("$BIN" ls "$WORK/docs/architecture.md" | awk '$1 == 2 { split($3, r, /[L-]/); print r[2] + 1 }')"
+[[ -n "$line" ]] || fail "no line range for diagram 2 in mermdraw ls"
+out="$("$BIN" "$WORK/docs/architecture.md:$line" --port "$PORT" --no-open 2>&1)"
+expect "reuses the running server" "$out" "already running"
+expect "FILE:LINE opens the diagram at that line" "$out" "?file=architecture.md#d=2"
+expect "FILE:LINE:COL works too" "$("$BIN" "$WORK/docs/architecture.md:$line:5" --port "$PORT" --no-open 2>&1)" "#d=2"
+
 # reads and writes with optimistic concurrency
 ver="$(curl -fs -D - -o /dev/null "$U/api/file?path=payments.md" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-version"{print $2}')"
 [[ -n "$ver" ]] || fail "GET /api/file has no X-Version header"

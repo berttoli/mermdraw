@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `mermdraw FILE:LINE` (or `FILE:LINE:COL`, as editors pass it) opens the diagram at that line, so an editor task
+  can jump to the diagram under the cursor. The README has tasks for VS Code / Cursor / Windsurf, Zed and JetBrains.
+- A second `mermdraw` for a folder that a server already serves opens a tab on that server and exits, so one server
+  serves the repo; `--new` starts a separate one.
+- The editor follows `#d=N` changes in its URL, for a browser that reuses an open tab.
+
 ## 0.1.0 — 2026-10-26
 
 First public release.

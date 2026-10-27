@@ -228,6 +228,7 @@ mermdraw new docs/adr/0042.md -t sequence --title "Token refresh"
 
 ```
 mermdraw [PATH]              open a .md/.mmd file or a directory (default: .)
+mermdraw FILE:LINE           open the diagram at LINE (FILE:LINE:COL works too)
 mermdraw ls FILE             list the diagrams in FILE
 mermdraw cat FILE [N]        print diagram N's source
 mermdraw new FILE [-t TYPE] [--title TITLE]
@@ -241,12 +242,57 @@ mermdraw icons rm PACK... [--vendor]
   -p, --port N               default 7788 (next free port if taken)
       --no-open              don't open a browser
       --app                  open as a chromeless Chrome/Edge/Brave app window
+      --new                  start a new server even if one already serves this folder
       --enable F1,F2         turn feature flags on (see Labs)
       --disable F1,F2        turn feature flags off
 ```
 
 Opening a file serves its git repository (or its folder outside git), so the file picker lists every markdown file
-in the repo and links between files work. Opening a directory serves that directory.
+in the repo and links between files work. Opening a directory serves that directory. If a mermdraw server is already
+running for that folder, a second `mermdraw` opens a tab on it and exits, so one server serves the whole repo; `--new`
+starts a separate one.
+
+</details>
+
+<details>
+<summary><b>Open the diagram under your cursor from an editor</b></summary>
+
+`mermdraw FILE:LINE` opens the diagram at that line (the one containing it, or the next one below), so any editor
+that can run a command with the current file and line can jump into the canvas. The first run starts the server; the
+next ones reuse it.
+
+**VS Code, Cursor, Windsurf** (`.vscode/tasks.json`, then bind *Tasks: Run Task* or the task to a key):
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "mermdraw: edit diagram",
+      "type": "shell",
+      "command": "mermdraw",
+      "args": ["${file}:${lineNumber}", "--app"],
+      "isBackground": true,
+      "presentation": { "reveal": "silent" }
+    }
+  ]
+}
+```
+
+**Zed** (`.zed/tasks.json`, then *task: spawn* or a key binding):
+
+```json
+[
+  {
+    "label": "mermdraw: edit diagram",
+    "command": "mermdraw",
+    "args": ["$ZED_FILE:$ZED_ROW", "--app"],
+    "reveal": "never"
+  }
+]
+```
+
+**JetBrains IDEs:** *Settings → Tools → External Tools*, program `mermdraw`, arguments `$FilePath$:$LineNumber$ --app`.
 
 </details>
 

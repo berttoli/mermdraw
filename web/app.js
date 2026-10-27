@@ -1670,6 +1670,11 @@ function bindUI() {
     if (!e.target.closest('#st-pop, #seltools')) closeStMenu();
   });
   window.addEventListener('pointerup', () => requestAnimationFrame(placeSelTools)); // after a pan or drag ends
+  // `mermdraw FILE:LINE` may land in a tab already showing the file, which only changes `#d=N`
+  window.addEventListener('hashchange', () => {
+    const d = +(new URLSearchParams(location.hash.slice(1)).get('d') || 1) - 1;
+    if (S.scan && d !== S.index && d >= 0 && d < S.scan.blocks.length) selectBlock(d, { fit: true });
+  });
   $('#file-q').addEventListener('input', () => {
     renderFileList();
     setFileActive(0);

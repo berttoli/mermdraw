@@ -86,12 +86,23 @@ struct Opts {
     kind: String,
     title: Option<String>,
     vendor: bool,
+    /// start a server even when one is already serving the same folder
+    new_server: bool,
     /// feature flags forced on (true) or off (false) from the command line
     flags: Vec<(String, bool)>,
 }
 
 fn main() {
-    let mut opts = Opts { port: None, open: true, app: false, kind: "flowchart".into(), title: None, vendor: false, flags: Vec::new() };
+    let mut opts = Opts {
+        port: None,
+        open: true,
+        app: false,
+        kind: "flowchart".into(),
+        title: None,
+        vendor: false,
+        new_server: false,
+        flags: Vec::new(),
+    };
     let mut pos: Vec<String> = Vec::new();
     let args: Vec<String> = env::args().skip(1).collect();
     let mut i = 0;
@@ -110,6 +121,7 @@ fn main() {
             "--no-open" => opts.open = false,
             "--app" => opts.app = true,
             "--vendor" => opts.vendor = true,
+            "--new" => opts.new_server = true,
             "--enable" | "--disable" => {
                 let on = a == "--enable";
                 for f in value().split(',').map(str::trim).filter(|f| !f.is_empty()) {
@@ -138,6 +150,7 @@ fn print_help() {
 
 USAGE
   mermdraw [PATH]             open the editor for a .md/.mmd file or a directory (default: .)
+  mermdraw FILE:LINE          open the diagram at LINE (FILE:LINE:COL works too, as editors pass it)
   mermdraw ls FILE            list the mermaid diagrams in FILE
   mermdraw cat FILE [N]       print the source of diagram N (1-based, default 1)
   mermdraw new FILE [-t TYPE] [--title TITLE]
@@ -153,11 +166,13 @@ OPTIONS
   -p, --port N                port to listen on (default {DEFAULT_PORT}, next free one if taken)
       --no-open               don't open a browser
       --app                   open in a chromeless Chrome/Edge/Brave app window if available
+      --new                   start a new server even if one is already serving this folder
       --enable F1,F2          turn feature flags on (see Labs in the editor)
       --disable F1,F2         turn feature flags off
   -h, --help                  show this help
   -V, --version               show version
 
+A server already running for the same folder is reused: mermdraw opens a tab on it and exits.
 The editor saves straight into the markdown file; commit it like any other change."
     );
 }
@@ -298,7 +313,8 @@ impl State {
 }
 
 fn serve(target: Option<&str>, opts: &Opts) {
-    let target = PathBuf::from(target.unwrap_or("."));
+    let (target, line) = split_line(target.unwrap_or("."));
+    let target = PathBuf::from(target);
     if !target.exists() {
         let name = target.to_string_lossy().to_string();
         if !(md::is_md(&name) || md::is_mmd(&name)) {
@@ -321,6 +337,28 @@ fn serve(target: Option<&str>, opts: &Opts) {
         (root, Some(rel))
     };
 
+    // FILE:LINE opens the diagram at that line
+    let diagram = match (&initial, line) {
+        (Some(_), Some(line)) => {
+            let text = fs::read_to_string(&target).unwrap_or_default();
+            md::block_at_line(&md::blocks(&text, md::is_mmd(&target.to_string_lossy())), line)
+        }
+        _ => None,
+    };
+
+    // Reuse a server already serving this folder (unless asked for a new one or for different flags).
+    if !opts.new_server && opts.flags.is_empty() {
+        if let Some(port) = running_server(&root, opts.port) {
+            let url = page_url(port, initial.as_deref(), diagram);
+            println!("mermdraw {VERSION}  already running for {}", root.display());
+            println!("  → {url}");
+            if opts.open {
+                open_browser(&url, opts.app);
+            }
+            return;
+        }
+    }
+
     let listener = bind(opts.port);
     let port = listener.local_addr().unwrap().port();
     let flags = opts.flags.iter().map(|(f, on)| format!("{}:{on}", json_str(f))).collect::<Vec<_>>().join(",");
@@ -334,10 +372,7 @@ fn serve(target: Option<&str>, opts: &Opts) {
         cv: Condvar::new(),
     });
 
-    let mut url = format!("http://127.0.0.1:{port}/");
-    if let Some(f) = &initial {
-        url.push_str(&format!("?file={}", url_encode(f)));
-    }
+    let url = page_url(port, initial.as_deref(), diagram);
     println!("mermdraw {VERSION}  root {}", state.root.display());
     println!("  → {url}   (Ctrl+C to quit)");
     if opts.open {
@@ -359,6 +394,57 @@ fn create_parent(path: &Path) {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir).unwrap_or_else(|e| die(&format!("{}: {e}", dir.display())));
     }
+}
+
+/// `docs/arch.md:42` (or `:42:7`, as editors pass file:line:column): the path and its 1-based line. A path that
+/// exists as written is never split.
+fn split_line(arg: &str) -> (&str, Option<usize>) {
+    if Path::new(arg).exists() {
+        return (arg, None);
+    }
+    let num = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    match arg.rsplit_once(':') {
+        Some((rest, last)) if num(last) && !rest.is_empty() => match rest.rsplit_once(':') {
+            Some((path, line)) if num(line) && !path.is_empty() => (path, line.parse().ok()),
+            _ => (rest, last.parse().ok()),
+        },
+        _ => (arg, None),
+    }
+}
+
+/// The editor URL for a file and (0-based) diagram index.
+fn page_url(port: u16, file: Option<&str>, diagram: Option<usize>) -> String {
+    let mut url = format!("http://127.0.0.1:{port}/");
+    if let Some(f) = file {
+        url.push_str(&format!("?file={}", url_encode(f)));
+        if let Some(d) = diagram {
+            url.push_str(&format!("#d={}", d + 1));
+        }
+    }
+    url
+}
+
+/// The port of a mermdraw server of this version already serving `root`, looked for on `port`, or on the ports
+/// `bind` picks from when none is given.
+fn running_server(root: &Path, port: Option<u16>) -> Option<u16> {
+    let want = format!(r#""version":{},"root":{}"#, json_str(VERSION), json_str(&root.to_string_lossy()));
+    let ports: Vec<u16> = match port {
+        Some(p) => vec![p],
+        None => (DEFAULT_PORT..DEFAULT_PORT + 20).collect(),
+    };
+    ports.into_iter().find(|&p| {
+        let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], p).into(), Duration::from_millis(200)) else {
+            return false;
+        };
+        let _ = s.set_read_timeout(Some(Duration::from_millis(800)));
+        let req = format!("GET /api/info HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nConnection: close\r\n\r\n");
+        if s.write_all(req.as_bytes()).is_err() {
+            return false;
+        }
+        let mut buf = Vec::new();
+        let _ = s.read_to_end(&mut buf); // a timeout keeps what arrived
+        String::from_utf8_lossy(&buf).contains(&want)
+    })
 }
 
 fn bind(port: Option<u16>) -> TcpListener {
@@ -806,4 +892,26 @@ fn url_encode(s: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_line_reads_editor_locations() {
+        assert_eq!(split_line("docs/arch.md:42"), ("docs/arch.md", Some(42)));
+        assert_eq!(split_line("docs/arch.md:42:7"), ("docs/arch.md", Some(42)));
+        assert_eq!(split_line("docs/arch.md"), ("docs/arch.md", None));
+        assert_eq!(split_line("docs/arch.md:"), ("docs/arch.md:", None));
+        assert_eq!(split_line("C:\\repo\\arch.md:3"), ("C:\\repo\\arch.md", Some(3)));
+        assert_eq!(split_line("Cargo.toml"), ("Cargo.toml", None)); // exists as written
+    }
+
+    #[test]
+    fn page_url_points_at_the_diagram() {
+        assert_eq!(page_url(7788, None, None), "http://127.0.0.1:7788/");
+        assert_eq!(page_url(7788, Some("docs/a b.md"), None), "http://127.0.0.1:7788/?file=docs/a%20b.md");
+        assert_eq!(page_url(7788, Some("docs/a.md"), Some(1)), "http://127.0.0.1:7788/?file=docs/a.md#d=2");
+    }
 }

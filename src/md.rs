@@ -82,6 +82,17 @@ pub fn blocks(text: &str, whole_file: bool) -> Vec<Block> {
 }
 
 /// Returns (diagram keyword, frontmatter title).
+/// The index of the diagram at 1-based `line` (as editors report it): the block containing the line, else the next
+/// one below it, else the last one above.
+pub fn block_at_line(blocks: &[Block], line: usize) -> Option<usize> {
+    let l = line.saturating_sub(1);
+    blocks
+        .iter()
+        .position(|b| b.start <= l && l <= b.end)
+        .or_else(|| blocks.iter().position(|b| b.start > l))
+        .or_else(|| blocks.len().checked_sub(1))
+}
+
 /// The document's first `# ` heading outside code fences (shown in the file picker).
 pub fn title(text: &str) -> Option<String> {
     let mut fence: Option<(char, usize)> = None;
@@ -199,6 +210,22 @@ mod tests {
         let b = blocks("- item\n  ```mermaid\n  graph TD\n    A\n  ```\n", false);
         assert_eq!(b[0].source, "graph TD\n  A");
         assert_eq!(b[0].kind, "graph");
+    }
+
+    #[test]
+    fn block_at_line_picks_the_diagram_under_the_cursor() {
+        // lines (1-based): 1 "# Doc", 3-5 first block, 7 "## Two", 9-11 second block, 13 "tail"
+        let text = "# Doc\n\n```mermaid\ngraph TD\n```\n\n## Two\n\n```mermaid\ngraph LR\n```\n\ntail\n";
+        let b = blocks(text, false);
+        assert_eq!(block_at_line(&b, 3), Some(0)); // opening fence
+        assert_eq!(block_at_line(&b, 4), Some(0));
+        assert_eq!(block_at_line(&b, 11), Some(1)); // closing fence
+        assert_eq!(block_at_line(&b, 1), Some(0)); // above every block: the next one
+        assert_eq!(block_at_line(&b, 7), Some(1)); // a heading: the block below it
+        assert_eq!(block_at_line(&b, 13), Some(1)); // below every block: the last one
+        assert_eq!(block_at_line(&[], 3), None);
+        assert_eq!(block_at_line(&blocks("graph TD\n  A\n", true), 2), Some(0));
+        // .mmd: the whole file
     }
 
     #[test]
