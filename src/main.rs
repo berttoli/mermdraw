@@ -104,7 +104,12 @@ fn main() {
         flags: Vec::new(),
     };
     let mut pos: Vec<String> = Vec::new();
-    let args: Vec<String> = env::args().skip(1).collect();
+    let args: Vec<String> = env::args_os()
+        .skip(1)
+        .map(|a| {
+            a.into_string().unwrap_or_else(|a| die(&format!("{} is not valid UTF-8; mermdraw needs UTF-8 paths", a.to_string_lossy())))
+        })
+        .collect();
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
@@ -114,7 +119,7 @@ fn main() {
         };
         match a {
             "-h" | "--help" => return print_help(),
-            "-V" | "--version" => return println!("mermdraw {VERSION}"),
+            "-V" | "--version" => return out(&format!("mermdraw {VERSION}")),
             "-p" | "--port" => opts.port = Some(value().parse().unwrap_or_else(|_| die("--port needs a number"))),
             "-t" | "--type" => opts.kind = value(),
             "--title" => opts.title = Some(value()),
@@ -145,7 +150,7 @@ fn main() {
 }
 
 fn print_help() {
-    println!(
+    out(&format!(
         "mermdraw {VERSION} — visual mermaid editor for markdown files
 
 USAGE
@@ -174,7 +179,16 @@ OPTIONS
 
 A server already running for the same folder is reused: mermdraw opens a tab on it and exits.
 The editor saves straight into the markdown file; commit it like any other change."
-    );
+    ));
+}
+
+/// Writes a line to stdout. When stdout is a pipe that closed early (`mermdraw cat … | head -1`), mermdraw stops
+/// quietly, as Unix tools do, instead of panicking on the write.
+fn out(line: &str) {
+    let mut o = io::stdout().lock();
+    if o.write_all(line.as_bytes()).and_then(|_| o.write_all(b"\n")).is_err() {
+        process::exit(0);
+    }
 }
 
 fn die(msg: &str) -> ! {
@@ -193,10 +207,10 @@ fn read_doc(path: &str) -> (String, Vec<md::Block>) {
 fn cmd_ls(args: &[String]) {
     let path = args.first().unwrap_or_else(|| die("usage: mermdraw ls FILE"));
     let (_, blocks) = read_doc(path);
-    println!("{path} — {} diagram{}", blocks.len(), if blocks.len() == 1 { "" } else { "s" });
+    out(&format!("{path} — {} diagram{}", blocks.len(), if blocks.len() == 1 { "" } else { "s" }));
     for b in &blocks {
         let lines = format!("L{}-{}", b.start + 1, b.end + 1);
-        println!("  {:>2}  {:<18} {:<10} {}", b.index + 1, b.kind, lines, b.title.as_deref().unwrap_or(""));
+        out(&format!("  {:>2}  {:<18} {:<10} {}", b.index + 1, b.kind, lines, b.title.as_deref().unwrap_or("")));
     }
 }
 
@@ -205,15 +219,15 @@ fn cmd_cat(args: &[String]) {
     let n: usize = args.get(1).map(|s| s.parse().unwrap_or_else(|_| die("N must be a number"))).unwrap_or(1);
     let (_, blocks) = read_doc(path);
     let b = blocks.get(n.wrapping_sub(1)).unwrap_or_else(|| die(&format!("{path} has no diagram #{n}")));
-    print!("{}", b.source);
-    if !b.source.ends_with('\n') {
-        println!();
-    }
+    out(b.source.strip_suffix('\n').unwrap_or(&b.source));
 }
 
 fn cmd_new(args: &[String], opts: &Opts) {
     let path = args.first().unwrap_or_else(|| die("usage: mermdraw new FILE [-t TYPE] [--title TITLE]"));
     let tpl = md::template(&opts.kind).unwrap_or_else(|| die(&format!("unknown diagram type '{}'", opts.kind)));
+    if !(md::is_md(path) || md::is_mmd(path)) {
+        die(&format!("{path}: give a markdown (.md) or mermaid (.mmd) file, e.g. docs/architecture.md"));
+    }
     // Only a missing file counts as empty; any other read error must not lead to overwriting it.
     let existing = match fs::read_to_string(path) {
         Ok(text) => Some(text),
@@ -235,10 +249,10 @@ fn cmd_new(args: &[String], opts: &Opts) {
     create_parent(Path::new(path));
     write_atomic(Path::new(path), text.as_bytes()).unwrap_or_else(|e| die(&format!("{path}: {e}")));
     if created {
-        println!("created {path} with a {} diagram", opts.kind);
+        out(&format!("created {path} with a {} diagram", opts.kind));
     } else {
         let n = if md::is_mmd(path) { 1 } else { count + 1 };
-        println!("added {} diagram #{n} to {path}", opts.kind);
+        out(&format!("added {} diagram #{n} to {path}", opts.kind));
     }
 }
 
@@ -250,10 +264,10 @@ fn cmd_icons(args: &[String], opts: &Opts) {
         None | Some("ls") | Some("list") => {
             let packs = icons::installed(root.as_deref());
             if packs.is_empty() {
-                println!("no icon packs installed — try: mermdraw icons add logos devicon");
+                out("no icon packs installed — try: mermdraw icons add logos devicon");
             }
             for p in packs {
-                println!("  {:<16} {:>8}  {:<8} {}", p.name, icons::human(p.size), p.source, p.path.display());
+                out(&format!("  {:<16} {:>8}  {:<8} {}", p.name, icons::human(p.size), p.source, p.path.display()));
             }
         }
         Some("add") => {
@@ -262,19 +276,27 @@ fn cmd_icons(args: &[String], opts: &Opts) {
             }
             for spec in &args[1..] {
                 match icons::add(spec, &dest) {
-                    Ok((path, size)) => println!("installed {spec} ({}) → {}", icons::human(size), path.display()),
+                    Ok((path, size)) => out(&format!("installed {spec} ({}) → {}", icons::human(size), path.display())),
                     Err(e) => die(&e),
                 }
             }
         }
         Some("rm") | Some("remove") => {
+            if args.len() < 2 {
+                die("usage: mermdraw icons rm PACK... [--vendor]");
+            }
+            let mut missing = false;
             for name in &args[1..] {
                 let path = dest.join(format!("{name}.json"));
                 if icons::valid_name(name) && fs::remove_file(&path).is_ok() {
-                    println!("removed {}", path.display());
+                    out(&format!("removed {}", path.display()));
                 } else {
                     eprintln!("mermdraw: {name} is not installed in {}", dest.display());
+                    missing = true;
                 }
+            }
+            if missing {
+                process::exit(1);
             }
         }
         Some(other) => die(&format!("unknown icons command '{other}' (try: ls, add, rm)")),
@@ -315,9 +337,12 @@ impl State {
 fn serve(target: Option<&str>, opts: &Opts) {
     let (target, line) = split_line(target.unwrap_or("."));
     let target = PathBuf::from(target);
+    let name = target.to_string_lossy().to_string();
     if !target.exists() {
-        let name = target.to_string_lossy().to_string();
         if !(md::is_md(&name) || md::is_mmd(&name)) {
+            if !name.contains(['/', '\\', '.']) {
+                die(&format!("{name} is not a command or an existing file (try --help)"));
+            }
             die(&format!("{name} does not exist"));
         }
         create_parent(&target);
@@ -325,7 +350,10 @@ fn serve(target: Option<&str>, opts: &Opts) {
         let tpl = md::template("flowchart").unwrap();
         let text = if md::is_mmd(&name) { tpl.to_string() } else { md::append_block("", &stem, Some("Overview"), tpl) };
         write_atomic(&target, text.as_bytes()).unwrap_or_else(|e| die(&format!("{name}: {e}")));
-        println!("created {name}");
+        out(&format!("created {name}"));
+    }
+    if target.is_file() && !(md::is_md(&name) || md::is_mmd(&name)) {
+        die(&format!("{name} is not a markdown (.md) or mermaid (.mmd) file"));
     }
     let target = target.canonicalize().unwrap_or_else(|e| die(&format!("{}: {e}", target.display())));
     let (root, initial) = if target.is_dir() {
@@ -350,8 +378,8 @@ fn serve(target: Option<&str>, opts: &Opts) {
     if !opts.new_server && opts.flags.is_empty() {
         if let Some(port) = running_server(&root, opts.port) {
             let url = page_url(port, initial.as_deref(), diagram);
-            println!("mermdraw {VERSION}  already running for {}", root.display());
-            println!("  → {url}");
+            out(&format!("mermdraw {VERSION}  already running for {}", root.display()));
+            out(&format!("  → {url}"));
             if opts.open {
                 open_browser(&url, opts.app);
             }
@@ -373,8 +401,8 @@ fn serve(target: Option<&str>, opts: &Opts) {
     });
 
     let url = page_url(port, initial.as_deref(), diagram);
-    println!("mermdraw {VERSION}  root {}", state.root.display());
-    println!("  → {url}   (Ctrl+C to quit)");
+    // a closed stdout (whoever started the server stopped reading) must not stop the server
+    let _ = writeln!(io::stdout().lock(), "mermdraw {VERSION}  root {}\n  → {url}   (Ctrl+C to quit)", state.root.display());
     if opts.open {
         open_browser(&url, opts.app);
     }
@@ -436,7 +464,7 @@ fn running_server(root: &Path, port: Option<u16>) -> Option<u16> {
         let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], p).into(), Duration::from_millis(200)) else {
             return false;
         };
-        let _ = s.set_read_timeout(Some(Duration::from_millis(800)));
+        let _ = s.set_read_timeout(Some(Duration::from_millis(300)));
         let req = format!("GET /api/info HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nConnection: close\r\n\r\n");
         if s.write_all(req.as_bytes()).is_err() {
             return false;

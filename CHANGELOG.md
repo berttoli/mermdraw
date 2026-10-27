@@ -7,6 +7,10 @@
 - A second `mermdraw` for a folder that a server already serves opens a tab on that server and exits, so one server
   serves the repo; `--new` starts a separate one.
 - The editor follows `#d=N` changes in its URL, for a browser that reuses an open tab.
+- Command-line fixes: output piped into `head` and the like ends quietly instead of panicking; a non-UTF-8 argument
+  gets an error instead of a crash; `new` only writes `.md`/`.mmd` files and keeps a CRLF file's line endings;
+  serving a file that isn't markdown is refused up front; `icons rm` exits non-zero when a pack isn't installed or none
+  is named; a mistyped command says it isn't one.
 
 ## 0.1.0 — 2026-10-26
 

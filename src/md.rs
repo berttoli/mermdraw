@@ -169,7 +169,9 @@ pub fn template(kind: &str) -> Option<&'static str> {
 
 /// Appends a fenced mermaid block (with an optional `## title`) to a markdown text.
 pub fn append_block(existing: &str, stem: &str, title: Option<&str>, tpl: &str) -> String {
-    let mut out = existing.to_string();
+    // the appended lines follow the file's line endings (CRLF files stay CRLF)
+    let crlf = existing.contains("\r\n");
+    let mut out = existing.replace("\r\n", "\n");
     if out.trim().is_empty() {
         out = format!("# {stem}\n");
     }
@@ -185,6 +187,9 @@ pub fn append_block(existing: &str, stem: &str, title: Option<&str>, tpl: &str) 
         out.push('\n');
     }
     out.push_str("```\n");
+    if crlf {
+        out = out.replace('\n', "\r\n");
+    }
     out
 }
 
@@ -233,6 +238,15 @@ mod tests {
         assert_eq!(title("intro\n```bash\n# not a title\n```\n## Sub\n# Real title #\n# Second\n").as_deref(), Some("Real title"));
         assert_eq!(title("## Only h2\n#hashtag\n").as_deref(), None);
         assert_eq!(title("~~~~\n# inside\n~~~\n# still inside\n~~~~\n# after\n").as_deref(), Some("after"));
+    }
+
+    #[test]
+    fn append_keeps_crlf_line_endings() {
+        let t = append_block("# Doc\r\n\r\nText.\r\n", "doc", Some("API"), "graph TD\n");
+        assert_eq!(t, "# Doc\r\n\r\nText.\r\n\r\n## API\r\n\r\n```mermaid\r\ngraph TD\r\n```\r\n");
+        assert!(!t.replace("\r\n", "").contains('\n'));
+        assert_eq!(append_block("a\n", "doc", None, "graph TD\n"), "a\n\n```mermaid\ngraph TD\n```\n");
+        // LF stays LF
     }
 
     #[test]

@@ -56,6 +56,23 @@ cp "$WORK/binary.md" "$WORK/binary.expected"
 if "$BIN" new "$WORK/binary.md" >/dev/null 2>&1; then fail "new wrote into a file it could not read as text"; fi
 cmp -s "$WORK/binary.md" "$WORK/binary.expected" || fail "new modified a file it could not read"
 pass "new leaves unreadable files untouched"
+if "$BIN" new "$WORK/notes.txt" >/dev/null 2>&1 || [[ -e "$WORK/notes.txt" ]]; then fail "new wrote a non-markdown file"; fi
+pass "new refuses non-markdown files"
+printf '# CRLF\r\n\r\nText.\r\n' >"$WORK/crlf.md"
+"$BIN" new "$WORK/crlf.md" --title Added >/dev/null
+[[ "$(wc -l <"$WORK/crlf.md")" -eq "$(grep -c $'\r$' "$WORK/crlf.md")" ]] || fail "new mixed LF lines into a CRLF file"
+pass "new keeps a CRLF file's line endings"
+expect "refuses to serve a non-markdown file" "$("$BIN" "$ROOT/Cargo.toml" --no-open --port "$PORT" 2>&1 || true)" "is not a markdown"
+expect "says when a word is not a command" "$("$BIN" lsx 2>&1 || true)" "not a command"
+expect "rejects non-UTF-8 arguments cleanly" "$("$BIN" ls "$WORK/$(printf 'bad\377').md" 2>&1 || true)" "not valid UTF-8"
+{
+  printf '# Big\n\n\140\140\140mermaid\nflowchart TD\n' # \140 is a backtick
+  seq 1 60000 | awk '{ print "    n" $1 " --> n" $1 + 1 }'
+  printf '\140\140\140\n'
+} >"$WORK/big.md"
+"$BIN" cat "$WORK/big.md" 2>"$WORK/pipe.err" | head -1 >/dev/null || true
+[[ ! -s "$WORK/pipe.err" ]] || fail "cat into a closed pipe: $(head -c 200 "$WORK/pipe.err")"
+pass "stops quietly when its output pipe closes early"
 expect "icons ls with an empty cache" "$("$BIN" icons ls)" "no icon packs installed"
 mkdir -p "$WORK/docs/.mermdraw/icons"
 printf '{"prefix":"demo","icons":{"dot":{"body":"<circle r=\\"4\\"/>"}}}' >"$WORK/docs/.mermdraw/icons/demo.json"
@@ -63,6 +80,9 @@ printf '{"flags":{"sticky-notes":true}}' >"$WORK/docs/.mermdraw/config.json"
 expect "icons ls finds vendored packs" "$(cd "$WORK/docs" && "$BIN" icons ls)" "project"
 if "$BIN" icons add ../escape >/dev/null 2>&1; then fail "icons add accepted a path"; fi
 pass "icons add rejects bad pack names"
+expect "icons rm without a name shows usage" "$("$BIN" icons rm 2>&1 || true)" "usage: mermdraw icons rm"
+if "$BIN" icons rm nothere >/dev/null 2>&1; then fail "icons rm of a pack that isn't installed exited 0"; fi
+pass "icons rm fails for a pack that isn't installed"
 
 # ---------------------------------------------------------------- server
 "$BIN" "$WORK/docs" --no-open --port "$PORT" --enable themes --disable icons >"$WORK/server.log" 2>&1 &
