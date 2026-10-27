@@ -11,6 +11,10 @@ installs an `mmdr` binary. If you tried an rc, move `.mmdr/` to `.mermdraw/` and
 - Visual canvas for mermaid flowcharts inside markdown: drag and drop, connect, group into subgraphs, text,
   images, links between diagrams with drill-down/back navigation, copy/paste as mermaid, undo/redo. Diagrams with
   their own mermaid theme sit on a paper card, so the canvas follows the light or dark UI and their text stays readable.
+- Mermaid 11.17's architecture shapes (person, browser, console, folder and bucket) drawn the way mermaid does, with
+  edges meeting their outlines; they are in the Shape menu, and person and browser in the palette. Collapsed
+  subgraphs (`group@{ view: collapsed }`) show as one box with a ••• marker that edges to its contents end at; a View
+  toggle in the Group inspector writes the statement, and Auto-layout handles collapsed groups as mermaid does.
 - A Miro-style workspace: floating toolbars, a palette centered on the canvas's left edge, outline and inspector panels
   that collapse (`⌘\` and `⌥⌘\`), and a searchable file picker (`⌘P`) that groups files by folder and shows each file's
   title and diagram count. A toolbar over the selection edits line ends, style, a per-line curve (`A e1@--> B` with

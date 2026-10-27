@@ -545,30 +545,77 @@ function previewSource(src) {
   return src.replace(/(\bimg:\s*")([^"]+)(")/g, (_, a, p, b) => a + assetUrl(p) + b);
 }
 
-let laySeq = 0;
-/** Lets mermaid lay the diagram out and reads back node centres from its SVG, scaled to the canvas's node sizes. */
+/** Mermaid's layout of the diagram as node centres (see mermaidPositions), including what collapsed groups hide. */
 async function mermaidLayout(src, m) {
+  const laid = await mermaidPositions(src.split('\n').filter((l) => !/^\s*%%\s*mermdraw:layout/.test(l)).join('\n'), m);
+  const owners = M.collapsedOwners(m);
+  if (!laid || !owners.size) return laid?.pos ?? null;
+  const { pos, size } = laid;
+  // Mermaid's collapsed box hugs its title, the canvas's carries a readable one: move everything else away
+  // from it by the difference, on both axes, so it doesn't overlap its neighbours.
+  for (const g of m.groups) {
+    const at = pos[g.id];
+    if (!at || owners.has(g.id)) continue;
+    const want = canvas.collapsedSize(g);
+    const dx = Math.max(0, want.w - size[g.id].w) / 2;
+    const dy = Math.max(0, want.h - size[g.id].h) / 2;
+    for (const [id, p] of Object.entries(pos)) {
+      if (id === g.id) continue;
+      if (Math.abs(p.x - at.x) > 1) p.x = Math.round(p.x + Math.sign(p.x - at.x) * dx);
+      if (Math.abs(p.y - at.y) > 1) p.y = Math.round(p.y + Math.sign(p.y - at.y) * dy);
+    }
+  }
+  // Mermaid leaves a collapsed group's contents out of its SVG. Lay them out as mermaid does with the group
+  // expanded, centred on the group's box, which is where the canvas draws the group.
+  const open = (await mermaidPositions(M.serializeFlowchart({ ...m, layout: {}, groups: m.groups.map((g) => ({ ...g, view: null })) }), m))?.pos;
+  const inside = new Map();
+  for (const n of m.nodes) if (owners.has(n.id)) inside.set(owners.get(n.id), [...(inside.get(owners.get(n.id)) || []), n]);
+  for (const [gid, nodes] of inside) {
+    const at = pos[gid];
+    if (!at) continue;
+    const local = open && nodes.every((n) => open[n.id]) ? open : M.layeredLayout({ ...m, nodes }, (id) => canvas.sizeOf(M.getNode(m, id)));
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const n of nodes) {
+      const p = local[n.id];
+      const s = canvas.sizeOf(n);
+      x1 = Math.min(x1, p.x - s.w / 2); y1 = Math.min(y1, p.y - s.h / 2);
+      x2 = Math.max(x2, p.x + s.w / 2); y2 = Math.max(y2, p.y + s.h / 2);
+    }
+    for (const n of nodes) pos[n.id] = { x: Math.round(at.x + local[n.id].x - (x1 + x2) / 2), y: Math.round(at.y + local[n.id].y - (y1 + y2) / 2) };
+  }
+  return pos;
+}
+
+let laySeq = 0;
+/**
+ * Lets mermaid lay the diagram out and reads back node centres (`pos`) and sizes (`size`) from its SVG,
+ * scaled to the canvas's node sizes.
+ */
+async function mermaidPositions(src, m) {
   const id = `mermdraw-lay-${++laySeq}`;
   const host = $('#layout-host');
   try {
-    const clean = src.split('\n').filter((l) => !/^\s*%%\s*mermdraw:layout/.test(l)).join('\n');
-    const { svg } = await mermaid.render(id, previewSource(clean));
+    const { svg } = await mermaid.render(id, previewSource(src));
     host.innerHTML = svg;
     const root = host.querySelector('svg');
     const vb = root.viewBox.baseVal;
     const rect = root.getBoundingClientRect();
     const scale = vb && vb.width && rect.width ? vb.width / rect.width : 1;
     const pos = {};
+    const size = {};
     const ratios = [];
-    // plain nodes are g.node; icon/image nodes are g.icon-shape / g.image-shape
+    // plain nodes are g.node; icon/image nodes are g.icon-shape / g.image-shape; a collapsed group is a
+    // g.node named after the group
     for (const el of root.querySelectorAll('g[id]')) {
-      const mm = /(?:^|-)flowchart-(.+)-\d+$/.exec(el.id);
       if (/\b(cluster|edge|label)/.test(el.getAttribute('class') || '')) continue;
-      if (!mm) continue;
+      const gid = el.id.slice(id.length + 1);
+      const key = /(?:^|-)flowchart-(.+)-\d+$/.exec(el.id)?.[1] ?? (M.getGroup(m, gid)?.view === 'collapsed' ? gid : null);
+      if (!key) continue;
       const r = el.getBoundingClientRect();
-      const n = M.getNode(m, mm[1]);
+      const n = M.getNode(m, key);
       if (n && r.width) ratios.push(canvas.sizeOf(n).w / (r.width * scale));
-      pos[mm[1]] = { x: (r.left + r.width / 2 - rect.left) * scale + (vb?.x || 0), y: (r.top + r.height / 2 - rect.top) * scale + (vb?.y || 0) };
+      pos[key] = { x: (r.left + r.width / 2 - rect.left) * scale + (vb?.x || 0), y: (r.top + r.height / 2 - rect.top) * scale + (vb?.y || 0) };
+      size[key] = { w: r.width * scale, h: r.height * scale };
     }
     if (!ratios.length) return null;
     // Mermaid sizes nodes by its own look and fonts (neo nodes are wider than the canvas's), so scale the
@@ -576,7 +623,8 @@ async function mermaidLayout(src, m) {
     ratios.sort((a, b) => a - b);
     const k = 1.15 * ratios[ratios.length >> 1];
     for (const p of Object.values(pos)) [p.x, p.y] = [Math.round(p.x * k), Math.round(p.y * k)];
-    return pos;
+    for (const s of Object.values(size)) [s.w, s.h] = [s.w * k, s.h * k];
+    return { pos, size };
   } catch {
     return null;
   } finally {
@@ -1087,13 +1135,15 @@ function groupInspector(el, g) {
   const m = S.model;
   if (!g) return diagramInspector(el);
   const d = M.descendants(m, g.id);
+  const collapsed = g.view === 'collapsed';
   el.innerHTML = `<div class="ins-h"><span class="tag">Group</span><code>subgraph ${esc(g.implicit ? g.title : g.id)}</code></div>
     ${row('ID', `<input data-k="id" value="${esc(g.implicit ? '' : g.id)}" placeholder="(none — title only)" spellcheck="false">`)}
     ${row('Title', `<input data-k="title" value="${esc(labelToEditor(g.title))}">`)}
     ${row('Direction', seg('dir', g.dir || '', [['', 'Inherit'], ['TB', 'TB'], ['LR', 'LR'], ['BT', 'BT'], ['RL', 'RL']]))}
+    ${g.implicit ? '' : row('View', seg('view', collapsed ? 'collapsed' : '', [['', 'Expanded'], ['collapsed', 'Collapsed', 'Show the group as one box (view: collapsed)']]))}
     ${row('Parent', `<select data-k="parent">${groupOptions(g.parent, new Set([g.id, ...d.groups]))}</select>`)}
     ${g.implicit ? '' : row('Colors', colorFields(M.parseCss(m.styles[g.id])))}
-    <p class="ins-note">${d.nodes.size} node${d.nodes.size === 1 ? '' : 's'} inside. Drag nodes onto the box to add them, or out of it to remove them.</p>
+    <p class="ins-note">${d.nodes.size} node${d.nodes.size === 1 ? '' : 's'} inside. ${collapsed ? 'Expand the group to see and edit them.' : 'Drag nodes onto the box to add them, or out of it to remove them.'}</p>
     <div class="ins-actions"><button class="btn" data-act="ungroup">Ungroup <kbd>⇧⌘G</kbd></button><button class="btn danger" data-act="delete-all">Delete with contents</button></div>`;
   let id = g.id;
   $('[data-k="id"]', el).addEventListener('change', (e) => {
@@ -1116,6 +1166,11 @@ function groupInspector(el, g) {
     inspectCommit();
   });
   bindSeg(el, 'dir', (v) => ((M.getGroup(m, id).dir = v || null), commitNow()));
+  bindSeg(el, 'view', (v) => {
+    M.getGroup(m, id).view = v || null;
+    commitNow();
+    renderInspector(true);
+  });
   $('[data-k="parent"]', el).addEventListener('change', (e) => {
     M.setGroupParent(m, id, e.target.value || null);
     commitNow();
@@ -1423,7 +1478,8 @@ function updateUrl() {
 const PALETTE = [
   ['rect', 'Process'], ['rounded', 'Rounded'], ['stadium', 'Terminal'], ['diam', 'Decision'], ['cyl', 'Database'],
   ['circle', 'Circle'], ['hex', 'Prepare'], ['fr-rect', 'Subprocess'], ['lean-r', 'Input / output'], ['doc', 'Document'],
-  ['cloud', 'Cloud'], ['h-cyl', 'Queue / stream'], null, ['text', 'Text'], ['image', 'Image'], ['group', 'Group', '⌘G'],
+  ['cloud', 'Cloud'], ['h-cyl', 'Queue / stream'], ['person', 'Person'], ['browser', 'Browser'], null, ['text', 'Text'],
+  ['image', 'Image'], ['group', 'Group', '⌘G'],
 ];
 
 function paletteItems() {
@@ -1445,7 +1501,7 @@ function buildPalette() {
     else if (shape === 'icon') icon = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.4 6.8 19.2l1-5.9-4.3-4.1 5.9-.8z"/></svg>';
     else if (shape === 'sticky') icon = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 4h16v11l-5 5H4z" style="fill:#fff4a3;stroke:#c9ad2c"/><path d="M15 20v-5h5" style="fill:none;stroke:#c9ad2c"/></svg>';
     else {
-      const [w, h] = shape === 'circle' ? [22, 22] : shape === 'diam' ? [30, 22] : [30, 19];
+      const [w, h] = shape === 'circle' ? [22, 22] : shape === 'diam' || shape === 'browser' ? [30, 22] : shape === 'person' ? [20, 24] : [30, 19];
       icon = `<svg viewBox="-17 -13 34 26" width="30" height="24">${shapeMarkup(shape, w, h, '')}</svg>`;
     }
     return `<button class="pi" draggable="true" data-shape="${shape}" data-tip="${label}" data-tip-side="right"${key ? ` data-key="${key}"` : ''} aria-label="${label}">${icon}</button>`;

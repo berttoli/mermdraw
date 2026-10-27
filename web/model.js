@@ -147,6 +147,7 @@ export const SHAPES = [
   ['cyl', 'Database'], ['circle', 'Circle'], ['dbl-circ', 'Double circle'], ['diam', 'Decision'],
   ['hex', 'Prepare'], ['lean-r', 'Input/Output'], ['lean-l', 'Output/Input'], ['trap-b', 'Priority'],
   ['trap-t', 'Manual'], ['odd', 'Odd'], ['doc', 'Document'], ['docs', 'Documents'], ['cloud', 'Cloud'],
+  ['person', 'Person'], ['browser', 'Browser'], ['console', 'Console'], ['folder', 'Folder'], ['bucket', 'Bucket'],
   ['h-cyl', 'Direct storage'], ['lin-cyl', 'Disk'], ['notch-rect', 'Card'], ['lin-rect', 'Lined process'],
   ['st-rect', 'Stacked'], ['tag-rect', 'Tagged process'], ['tag-doc', 'Tagged doc'], ['delay', 'Delay'],
   ['bolt', 'Comm link'], ['flag', 'Paper tape'], ['hourglass', 'Collate'], ['tri', 'Extract'],
@@ -176,7 +177,7 @@ const SHAPE_ALIASES = {
   'div-proc': 'div-rect', 'divided-process': 'div-rect', 'divided-rectangle': 'div-rect',
   'stored-data': 'bow-rect', 'bow-tie-rectangle': 'bow-rect', 'loop-limit': 'notch-pent', 'notched-pentagon': 'notch-pent',
   'manual-input': 'sl-rect', 'sloped-rectangle': 'sl-rect', 'lined-document': 'lin-doc',
-  'flipped-triangle': 'flip-tri', 'manual-file': 'flip-tri',
+  'flipped-triangle': 'flip-tri', 'manual-file': 'flip-tri', directory: 'folder',
 };
 export const normShape = (s) => SHAPE_ALIASES[String(s).toLowerCase()] || String(s).toLowerCase();
 
@@ -232,10 +233,11 @@ export function parseFlowchart(src) {
   const stack = [];
   const linkStyles = [];
   let implicitGroups = 0;
-  // Subgraph and edge ids, so metadata on them is not read as a node: `core@{ view: collapsed }` on a
-  // subgraph (mermaid ≥ 11.17) is kept verbatim, `e1@{ curve: linear }` on an edge (`A e1@--> B`) goes on
-  // that edge. Either may be declared after its metadata line.
+  // Subgraph and edge ids, so metadata on them is not read as a node; either may be declared after its metadata
+  // line. On a subgraph (mermaid ≥ 11.17) a plain `view` (`core@{ view: collapsed }`) becomes the group's `view` and
+  // anything else is kept verbatim; on an edge (`A e1@--> B`), `e1@{ curve: linear }` goes on that edge.
   const subgraphIds = new Set();
+  const views = new Map();
   const edgeIds = new Set();
   const edgeMeta = new Map(); // edge id -> { props, raw }
   for (const l of lines.slice(i)) {
@@ -317,15 +319,16 @@ export function parseFlowchart(src) {
     for (const piece of splitStatements(t)) {
       if (!piece) continue;
       const id = ID_RE.exec(piece)?.[0];
-      const meta = id && /^\s*@\{[\s\S]*\}\s*;?$/.test(piece.slice(id.length));
+      const meta = id && /^\s*@\{([\s\S]*)\}\s*;?$/.exec(piece.slice(id.length));
       if (meta && subgraphIds.has(id)) {
-        m.extras.push(piece);
+        const p = parseProps(meta[1]);
+        if (Object.keys(p).join() === 'view' && /^\w+$/.test(p.view)) views.set(id, p.view);
+        else m.extras.push(piece);
         continue;
       }
       if (meta && edgeIds.has(id)) {
-        const body = readBraces(piece, piece.indexOf('@{') + 1)?.body ?? '';
         const prev = edgeMeta.get(id);
-        edgeMeta.set(id, { props: { ...prev?.props, ...parseProps(body) }, raw: [...(prev?.raw || []), piece] });
+        edgeMeta.set(id, { props: { ...prev?.props, ...parseProps(meta[1]) }, raw: [...(prev?.raw || []), piece] });
         continue;
       }
       const chain = parseChain(piece);
@@ -364,6 +367,7 @@ export function parseFlowchart(src) {
   const gids = new Set(m.groups.map((g) => g.id));
   m.nodes = m.nodes.filter((n) => !(gids.has(n.id) && !n.explicit));
   for (const n of m.nodes) if (n.parent && !gids.has(n.parent)) n.parent = null;
+  for (const g of m.groups) if (views.has(g.id)) g.view = views.get(g.id);
   return m;
 }
 
@@ -414,14 +418,14 @@ function parseSubgraphHeader(rest) {
   rest = rest.trim().replace(/;$/, '').trim();
   let mm;
   if ((mm = new RegExp(String.raw`^(${ID})\s*\[\s*(?:"([^"]*)"|([^\]]*))\s*\]$`, 'u').exec(rest))) {
-    return { id: mm[1], title: (mm[2] ?? mm[3]).trim(), dir: null, implicit: false };
+    return { id: mm[1], title: (mm[2] ?? mm[3]).trim(), dir: null, view: null, implicit: false };
   }
   if ((mm = /^"([^"]*)"$/.exec(rest))) {
     const title = mm[1];
-    return /\s/.test(title) ? { id: '', title, dir: null, implicit: true } : { id: title, title, dir: null, implicit: false };
+    return /\s/.test(title) ? { id: '', title, dir: null, view: null, implicit: true } : { id: title, title, dir: null, view: null, implicit: false };
   }
-  if (ID_RE.exec(rest)?.[0] === rest) return { id: rest, title: rest, dir: null, implicit: false };
-  return { id: '', title: rest, dir: null, implicit: true };
+  if (ID_RE.exec(rest)?.[0] === rest) return { id: rest, title: rest, dir: null, view: null, implicit: false };
+  return { id: '', title: rest, dir: null, view: null, implicit: true };
 }
 
 function parseLayout(m, t) {
@@ -689,6 +693,8 @@ export function serializeFlowchart(m) {
   emit(null, 1, new Set());
   for (const e of m.edges) out.push(`${IND}${e.from} ${e.id ? e.id + '@' : ''}${linkStr(e)}${edgeLabel(e)} ${e.to}`);
   for (const e of m.edges) if (e.id && e.props && Object.keys(e.props).length) out.push(`${IND}${e.id}@{ ${propsStr(e.props)} }`);
+  // after every subgraph, so mermaid attaches the metadata to the group instead of making a node
+  for (const g of order.groups) if (g.view && !g.implicit) out.push(`${IND}${g.id}@{ view: ${g.view} }`);
 
   const visibleId = (id) => {
     const g = m.groups.find((x) => x.id === id);
@@ -928,9 +934,29 @@ export function descendants(m, gid) {
   return { groups, nodes };
 }
 
+/**
+ * Maps every node and group inside a collapsed group (`view: collapsed`) to the outermost
+ * collapsed group around it: mermaid leaves them out and draws that group as one box instead.
+ */
+export function collapsedOwners(m) {
+  const owners = new Map();
+  const collapsed = (id) => getGroup(m, id)?.view === 'collapsed';
+  for (const g of m.groups) {
+    if (!collapsed(g.id) || owners.has(g.id)) continue;
+    let top = g.id;
+    for (let p = g.parent, seen = new Set([g.id]); p && !seen.has(p); p = getGroup(m, p)?.parent) {
+      seen.add(p);
+      if (collapsed(p)) top = p;
+    }
+    const d = descendants(m, top);
+    for (const id of [...d.nodes, ...d.groups]) owners.set(id, top);
+  }
+  return owners;
+}
+
 export function addGroup(m, { title = 'Group', nodes = [], groups = [], parent = null, x = 0, y = 0 } = {}) {
   const id = uniqueId(m, slug(title) || 'group');
-  m.groups.push({ id, title, dir: null, parent, implicit: false });
+  m.groups.push({ id, title, dir: null, view: null, parent, implicit: false });
   for (const n of m.nodes) if (nodes.includes(n.id)) n.parent = id;
   for (const g of m.groups) if (groups.includes(g.id) && g.id !== id) g.parent = id;
   if (!nodes.length && !groups.length) m.layout[id] = { x, y };

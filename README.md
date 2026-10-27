@@ -33,8 +33,10 @@ mermdraw docs/architecture.md        # opens the editor in your browser
 **Visual canvas for flowcharts**
 - Drag, drop and connect: pull a node's ● handle onto another node, or onto empty space to create the next node.
   Press <kbd>Tab</kbd> while naming a node to chain the next one.
-- All 38 mermaid 11 shapes, plus free text, images (drop or paste one and it's saved to `assets/`) and product icons.
-- Subgraphs: <kbd>⌘G</kbd> to group, drag nodes into or out of a box, nest groups, set a direction per group.
+- All 43 mermaid shapes, person, browser, console, folder and bucket among them, plus free text, images (drop or paste
+  one and it's saved to `assets/`) and product icons.
+- Subgraphs: <kbd>⌘G</kbd> to group, drag nodes into or out of a box, nest groups, set a direction per group, collapse
+  a group into one box (`view: collapsed`).
 - A Miro-style toolbar floats over the selection: line ends, swap, line style, a per-line shape (curved, straight,
   elbow) and color; node shape, fill and border; group direction and fill; align, group and duplicate.
 - Double-click a node, line or group to edit its label or title.
