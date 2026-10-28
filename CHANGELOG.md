@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Placing nodes from scripts and addons.** `cat --json` gives the diagram's canvas positions by node id
+  (`"positions":{"web":[0,0],…}`), and `write FILE N --place ID:X,Y` sets a node's position in the layout comment, so
+  a node an addon or agent adds can sit next to the nodes it connects to instead of wherever the editor finds room.
+  It moves a node the layout has, adds one it doesn't, and refuses nodes the diagram doesn't name and diagrams without
+  canvas positions. `write --json` reports how many it `placed`. Both are additions to version 1 of the addon contract.
+
 ## 0.2.0 — 2026-10-27
 
 Addons, starting with [mermdraw-mcp](https://github.com/berttoli/mermdraw-mcp), which lets coding agents read and edit

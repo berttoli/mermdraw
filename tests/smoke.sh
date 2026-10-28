@@ -139,6 +139,16 @@ cmp -s "$F" "$WORK/before.md" || fail "a stale write changed the file"
 pass "a refused write leaves the file alone"
 [[ "$(printf 'graph TD\n  x --> y\n' | code_of "$BIN" write "$F" 1 --base stale)" == 3 ]] || fail "plain write exit code on a conflict"
 pass "write exits 3 on a conflict without --json too"
+expect "cat --json gives the canvas positions" "$("$BIN" cat --json "$F")" '"positions":{"shopper":[0,0],"stripe":[1100,260],'
+out="$(printf 'flowchart LR\n    shopper([Shopper]) --> cdn[CDN]\n    cdn --> waf[WAF]\n' | "$BIN" write "$F" 1 --place waf:180,120 --place cdn:200,0 --json)"
+expect "write --place says how many it placed" "$out" '"layout":"kept","placed":2'
+expect "write --place moves a node where it stands" "$("$BIN" cat "$F")" "shopper:0,0 stripe:1100,260 cdn:200,0 ingress:350,0"
+expect "write --place adds a new node at the end" "$("$BIN" cat "$F")" "events:1290,-140 waf:180,120"
+cp "$F" "$WORK/before.md"
+expect "write --place refuses a node the diagram doesn't have" \
+  "$(printf 'flowchart LR\n  a --> b\n' | "$BIN" write "$F" 1 --place ghost:1,2 --json || true)" "has no node ghost"
+cmp -s "$F" "$WORK/before.md" || fail "a refused --place changed the file"
+pass "a refused --place leaves the file alone"
 out="$(printf 'flowchart LR\n  a --> b\n  %%%% mermdraw:layout a:1,2 b:3,4\n' | "$BIN" write "$F" 1 --json)"
 expect "a layout comment in the input replaces the old one" "$out" '"layout":"input"'
 [[ "$(grep -c "mermdraw:layout" "$F")" == 1 ]] || fail "write left two layout comments"
@@ -157,6 +167,10 @@ expect "write --append creates the file" "$out" '"index":1,"version":"'
 expect "write --append says it created the file" "$out" '"created":true'
 expect "write --append adds a diagram" "$(printf 'graph TD\n  a --> b\n' | "$BIN" write "$A" --append --title Second --json)" '"index":2'
 expect "the appended diagrams are listed with their titles" "$("$BIN" ls "$A")" "2  graph              L12-15     Second"
+expect "write --place needs canvas positions to add to" \
+  "$(printf 'graph TD\n  a --> b\n' | "$BIN" write "$A" 2 --place a:1,2 --json || true)" "no canvas positions to add to"
+expect "write --append takes no --place" \
+  "$(printf 'graph TD\n  a --> b\n' | "$BIN" write "$A" --append --place a:1,2 --json || true)" "--place needs a diagram number"
 
 # ---------------------------------------------------------------- addons: mermdraw NAME runs mermdraw-NAME
 mkdir -p "$WORK/bin"

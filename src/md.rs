@@ -211,6 +211,87 @@ pub fn split_layout(source: &str) -> (String, Vec<&str>) {
     (rest.join("\n"), layout)
 }
 
+/// A canvas position: a node (or empty group) id and its x, y on the canvas.
+pub type Position = (String, f64, f64);
+
+/// One `id:x,y` token of a layout comment, read the way web/model.js reads it.
+pub fn parse_position(tok: &str) -> Option<Position> {
+    let num = |s: &str| {
+        let digits = s.strip_prefix('-').unwrap_or(s);
+        let (int, frac) = digits.split_once('.').unwrap_or((digits, "0"));
+        let ok = |d: &str| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit());
+        if ok(int) && ok(frac) {
+            s.parse::<f64>().ok()
+        } else {
+            None
+        }
+    };
+    let (id, xy) = tok.rsplit_once(':')?;
+    let (x, y) = xy.split_once(',')?;
+    if id.is_empty() {
+        return None;
+    }
+    Some((id.to_string(), num(x)?, num(y)?))
+}
+
+fn layout_tokens(line: &str) -> impl Iterator<Item = &str> {
+    let body = line.trim().strip_prefix("%%").map(str::trim_start).and_then(|r| r.strip_prefix(LAYOUT_TAG)).unwrap_or("");
+    body.split_whitespace()
+}
+
+/// The canvas positions in a diagram source's layout comments, in their order; for an id given twice, the last wins.
+pub fn positions(source: &str) -> Vec<Position> {
+    let mut out: Vec<Position> = Vec::new();
+    for (id, x, y) in source.lines().filter(|l| is_layout_line(l)).flat_map(layout_tokens).filter_map(parse_position) {
+        match out.iter_mut().find(|p| p.0 == id) {
+            Some(p) => (p.1, p.2) = (x, y),
+            None => out.push((id, x, y)),
+        }
+    }
+    out
+}
+
+/// A coordinate as the editor writes it: a whole number, without a trailing `.0`.
+pub fn coord(v: f64) -> String {
+    format!("{}", v.round() as i64)
+}
+
+/// `source` with `places` set in its layout comment: a position the comment already has is changed where it stands,
+/// a new one is added at the end of the comment. None when the source has no layout comment to add to.
+pub fn place(source: &str, places: &[Position]) -> Option<String> {
+    let mut lines: Vec<String> = source.lines().map(str::to_string).collect();
+    let first = lines.iter().position(|l| is_layout_line(l))?;
+    for (id, x, y) in places {
+        let token = format!("{id}:{},{}", coord(*x), coord(*y));
+        let mut found = false;
+        for line in lines.iter_mut().filter(|l| is_layout_line(l)) {
+            let mut start = 0;
+            while let Some(at) = line[start..].find(&format!("{id}:")).map(|at| at + start) {
+                let end = line[at..].find(char::is_whitespace).map_or(line.len(), |e| at + e);
+                let whole = line[..at].ends_with(char::is_whitespace) && parse_position(&line[at..end]).is_some_and(|p| &p.0 == id);
+                if whole {
+                    line.replace_range(at..end, &token);
+                    found = true;
+                }
+                start = at + if whole { token.len() } else { id.len() + 1 };
+            }
+        }
+        if !found {
+            lines[first] = format!("{} {token}", lines[first].trim_end());
+        }
+    }
+    Some(lines.join("\n"))
+}
+
+/// Whether the diagram (outside its `%%` comments) names `id`: an identifier with no letter, digit or `_` either side.
+pub fn mentions(source: &str, id: &str) -> bool {
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+    source
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("%%"))
+        .any(|l| l.match_indices(id).any(|(at, _)| !word(l[..at].chars().next_back()) && !word(l[at + id.len()..].chars().next())))
+}
+
 /// The 1-based number of the first line of `source` that would end a block fenced with `fence` early.
 pub fn closing_fence_line(source: &str, (fc, n): (char, usize)) -> Option<usize> {
     source
@@ -320,6 +401,30 @@ mod tests {
             is_layout_line("%% mermdraw:layout x:1,2") && !is_layout_line("%% mermdraw: layout") && !is_layout_line("a %% mermdraw:layout")
         );
         assert_eq!(split_layout("graph TD\n  A").1.len(), 0);
+    }
+
+    #[test]
+    fn reads_canvas_positions_like_the_editor() {
+        let src = "flowchart LR\n  a --> b\n  %% mermdraw:layout a:0,0 b:-200,40.5 bad c:1,x a:10,20 x:y:3,4";
+        let p = positions(src);
+        assert_eq!(p, vec![("a".into(), 10.0, 20.0), ("b".into(), -200.0, 40.5), ("x:y".into(), 3.0, 4.0)]);
+        assert!(positions("graph TD\n  a --> b").is_empty());
+        assert_eq!(parse_position("n1:-5,7"), Some(("n1".into(), -5.0, 7.0)));
+        for bad in ["n1:5", ":1,2", "n1:1,2,3", "n1:1.,2", "n1:+1,2", "n1:1e3,2"] {
+            assert_eq!(parse_position(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn places_nodes_in_the_layout_comment() {
+        let src = "flowchart LR\n  a --> b\n  b --> c\n  %% mermdraw:layout a:0,0 ab:5,5 b:200,0";
+        let placed = place(src, &[("c".into(), 400.0, 0.4), ("b".into(), 210.6, -10.0)]).unwrap();
+        // b moves where it stands, ab (which starts like a) is left alone, and c is added at the end
+        assert_eq!(placed, "flowchart LR\n  a --> b\n  b --> c\n  %% mermdraw:layout a:0,0 ab:5,5 b:211,-10 c:400,0");
+        assert_eq!(positions(&placed).last(), Some(&("c".into(), 400.0, 0.0)));
+        assert_eq!(place("graph TD\n  a --> b", &[("a".into(), 1.0, 2.0)]), None, "no layout comment to add to");
+        assert!(mentions("graph TD\n  api-->db[(DB)]", "db") && mentions("graph TD\n  api-->db", "api"));
+        assert!(!mentions("graph TD\n  dbx --> y", "db") && !mentions("graph TD\n  %% db\n  a", "db"));
     }
 
     #[test]

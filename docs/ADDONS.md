@@ -140,22 +140,25 @@ A file's diagrams, or those of every markdown file under a folder (default `.`) 
 Diagram N (default 1): the fields of an `ls` diagram, plus:
 
 ```json
-{"mermdraw":"0.2.0","contract":1,"file":"docs/shop.md","version":"1793076496405403096-116","index":1,"kind":"flowchart",
-  "title":"Checkout","start_line":5,"end_line":9,"layout":true,"source":"flowchart LR\n    web[Web] --> api[API]"}
+{"mermdraw":"0.3.0","contract":1,"file":"docs/shop.md","version":"1793076496405403096-116","index":1,"kind":"flowchart",
+  "title":"Checkout","start_line":5,"end_line":9,"layout":true,"positions":{"web":[0,0],"api":[200,0]},
+  "source":"flowchart LR\n    web[Web] --> api[API]"}
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `file`, `version` | as in `ls`; pass `version` back to `write --base` |
+| `positions` | the canvas position `[x, y]` of each positioned node (or empty group) by id, in the layout comment's order; `{}` without one. Since 0.3.0 |
 | `source` | the diagram without its fences and without the `%% mermdraw:layout …` comment, dedented if the fence is indented |
 
-### `mermdraw write FILE N --base VERSION --json < SOURCE`
+### `mermdraw write FILE N --base VERSION [--place ID:X,Y]... --json < SOURCE`
 
 Replaces diagram N with the source on stdin: UTF-8, without fences. The rest of the file is kept byte for byte, and the
 new lines follow the file's line endings and the fence's indentation.
 
 ```json
-{"mermdraw":"0.2.0","contract":1,"file":"docs/shop.md","index":1,"version":"1793076496415697402-135","layout":"kept","created":false}
+{"mermdraw":"0.3.0","contract":1,"file":"docs/shop.md","index":1,"version":"1793076496415697402-135","layout":"kept",
+  "placed":1,"created":false}
 ```
 
 | Field | Meaning |
@@ -163,11 +166,19 @@ new lines follow the file's line endings and the fence's indentation.
 | `file`, `index` | the diagram written |
 | `version` | the file's new version, for the next write |
 | `layout` | `kept`: the input had no layout comment and the diagram's was carried over; `input`: the input brought its own; `none`: neither had one |
+| `placed` | how many `--place` positions were set. Since 0.3.0 |
 | `created` | whether the file was created (only with `--append`) |
 
 Send sources the way `cat --json` gives them, and canvas positions survive. The write is refused with exit code 3 and
 `conflict` when the file's version isn't `--base`. Without `--base`, it is refused when the file changed while `write`
 was running. A source with a line that would close the code fence, or an empty source, is refused with exit code 1.
+
+`--place ID:X,Y` (repeatable, or several in one space-separated value) sets a node's canvas position in the layout
+comment, in the coordinates `cat --json` gives in `positions`: a position the comment has is changed where it stands, a
+new one is added at its end, and coordinates are rounded to whole numbers, as the editor writes them. Use it to give a
+node you add a spot next to the nodes it connects to; a node without a position is placed by the editor wherever there
+is room. It is refused with exit code 1, and nothing is written, for a node the new source doesn't name, for a diagram
+without canvas positions (the editor lays those out by itself), and with `--append`. Since 0.3.0.
 
 ### `mermdraw write FILE --append [--title TITLE] --json < SOURCE`
 

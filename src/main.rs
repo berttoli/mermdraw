@@ -107,6 +107,8 @@ struct Opts {
     /// `write --base`: the version of the file the new source was based on
     base: Option<String>,
     append: bool,
+    /// `write --place ID:X,Y`: canvas positions to set in the diagram's layout comment
+    places: Vec<md::Position>,
     /// `icons search --limit`
     limit: usize,
     /// `addons add --version`: a release tag
@@ -133,6 +135,7 @@ fn main() {
         json: false,
         base: None,
         append: false,
+        places: Vec::new(),
         limit: 50,
         tag: None,
     };
@@ -165,6 +168,13 @@ fn main() {
             "--json" => opts.json = true,
             "--base" => opts.base = Some(value()),
             "--append" => opts.append = true,
+            "--place" => {
+                for tok in value().split_whitespace() {
+                    let p =
+                        md::parse_position(tok).unwrap_or_else(|| die(&format!("--place takes ID:X,Y (e.g. reviews:910,-280), not {tok}")));
+                    opts.places.push(p);
+                }
+            }
             "--limit" => opts.limit = value().parse().ok().filter(|n| *n > 0).unwrap_or_else(|| die("--limit needs a positive number")),
             "--enable" | "--disable" => {
                 let on = a == "--enable";
@@ -203,9 +213,10 @@ USAGE
   mermdraw FILE:LINE          open the diagram at LINE (FILE:LINE:COL works too, as editors pass it)
   mermdraw ls [FILE|DIR]      list the mermaid diagrams in FILE, or in the markdown files under DIR
   mermdraw cat FILE [N]       print the source of diagram N (1-based, default 1)
-  mermdraw write FILE N [--base VERSION] < SOURCE
+  mermdraw write FILE N [--base VERSION] [--place ID:X,Y]... < SOURCE
                               replace diagram N with the source on stdin, keeping its canvas
-                              positions unless the input has its own layout comment
+                              positions unless the input has its own layout comment; --place
+                              sets a node's position (a new node, or one to move)
   mermdraw write FILE --append [--title TITLE] < SOURCE
                               append the diagram on stdin (creates FILE if needed)
   mermdraw new FILE [-t TYPE] [--title TITLE]
@@ -316,6 +327,15 @@ fn json_opt(s: Option<&str>) -> String {
     s.map_or_else(|| "null".into(), json_str)
 }
 
+/// A coordinate as a JSON number: whole numbers without a fraction.
+fn json_num(v: f64) -> String {
+    if v.fract() == 0.0 {
+        md::coord(v)
+    } else {
+        format!("{v}")
+    }
+}
+
 /// A diagram's JSON members: its 1-based number, the 1-based lines of its fences, and whether the source has a
 /// canvas-position comment.
 fn diagram_fields(b: &md::Block, line_count: usize) -> String {
@@ -392,12 +412,15 @@ fn cmd_cat(args: &[String], opts: &Opts) {
     let b = blocks.get(n.wrapping_sub(1)).unwrap_or_else(|| die(&format!("{path} has no diagram #{n}")));
     if opts.json {
         let (source, _) = md::split_layout(&b.source);
+        let positions: Vec<String> =
+            md::positions(&b.source).iter().map(|(id, x, y)| format!("{}:[{},{}]", json_str(id), json_num(*x), json_num(*y))).collect();
         out(&format!(
-            r#"{{{},"file":{},"version":{},{},"source":{}}}"#,
+            r#"{{{},"file":{},"version":{},{},"positions":{{{}}},"source":{}}}"#,
             json_head(),
             json_str(path),
             json_str(&version),
             diagram_fields(b, text.lines().count()),
+            positions.join(","),
             json_str(&source)
         ));
     } else {
@@ -448,8 +471,19 @@ fn cmd_write(args: &[String], opts: &Opts) {
             } else {
                 (source.clone(), "none")
             };
+            let source = if opts.places.is_empty() {
+                source
+            } else {
+                if let Some((id, ..)) = opts.places.iter().find(|(id, ..)| !md::mentions(&source, id)) {
+                    die(&format!("--place {id}: diagram #{n} has no node {id}"));
+                }
+                md::place(&source, &opts.places).unwrap_or_else(|| {
+                    die(&format!("diagram #{n} has no canvas positions to add to (the editor lays it out by itself); leave --place out"))
+                })
+            };
             (md::replace_block(&existing, b, &source, mmd), n, layout)
         }
+        None if !opts.places.is_empty() => die("--place needs a diagram number: a new diagram has no canvas positions yet"),
         None => {
             check_fence(('`', 3));
             let layout = if source.lines().any(md::is_layout_line) { "input" } else { "none" };
@@ -478,11 +512,12 @@ fn cmd_write(args: &[String], opts: &Opts) {
     };
     if opts.json {
         out(&format!(
-            r#"{{{},"file":{},"index":{index},"version":{},"layout":{},"created":{created}}}"#,
+            r#"{{{},"file":{},"index":{index},"version":{},"layout":{},"placed":{},"created":{created}}}"#,
             json_head(),
             json_str(path),
             json_str(&version),
-            json_str(layout)
+            json_str(layout),
+            opts.places.len()
         ));
     } else {
         let kept = if layout == "kept" { " (canvas positions kept)" } else { "" };
