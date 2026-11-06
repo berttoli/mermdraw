@@ -234,11 +234,32 @@ main() {
   previous=""
   if [ -x "$dir/mermdraw" ]; then previous=$("$dir/mermdraw" --version 2>/dev/null || true); fi
   new="$dir/.mermdraw.new.$$"
+  old="$dir/.mermdraw.old.$$"
+  if [ -e "$dir/mermdraw" ] || [ -L "$dir/mermdraw" ]; then
+    cp -p "$dir/mermdraw" "$old" 2>/dev/null || err "could not back up $dir/mermdraw; nothing was installed"
+  fi
   if ! cp "$bin" "$new" 2>/dev/null || ! chmod 755 "$new" || ! mv -f "$new" "$dir/mermdraw"; then
-    rm -f "$new"
+    rm -f "$new" "$old"
     err "could not write to $dir; pass --dir DIR, or run it with sudo for a system folder"
   fi
-  installed=$("$dir/mermdraw" --version 2>/dev/null) || err "installed $dir/mermdraw, but it doesn't run on this machine"
+  installed=$("$dir/mermdraw" --version 2>/dev/null) || installed=""
+  invalid=no
+  reason="the new build does not run on this machine"
+  if [ -z "$installed" ] || [ "${installed#mermdraw }" = "$installed" ]; then invalid=yes; fi
+  if [ -n "$version" ] && [ "$installed" != "mermdraw ${version#v}" ]; then
+    invalid=yes
+    if [ -n "$installed" ]; then reason="the new build reports $installed instead of ${version#v}"; fi
+  fi
+  if [ "$invalid" = yes ]; then
+    if [ -e "$old" ]; then
+      mv -f "$old" "$dir/mermdraw" || err "$reason, and could not restore $old; move it back to $dir/mermdraw"
+      err "$reason; the previous binary was restored"
+    else
+      rm -f "$dir/mermdraw"
+      err "$reason; nothing was installed"
+    fi
+  fi
+  rm -f "$old"
 
   update_path "$dir"
   if [ -n "$previous" ] && [ "$previous" != "$installed" ]; then

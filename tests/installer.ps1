@@ -12,6 +12,7 @@ $installer = Join-Path $root 'scripts\install.ps1'
 if (-not (Test-Path -LiteralPath $Bin)) { throw "FAIL: no executable at $Bin (build with: cargo build --release)" }
 $Bin = (Resolve-Path -LiteralPath $Bin).ProviderPath
 $version = (& $Bin --version | Out-String).Trim()
+$tag = 'v' + $version.Substring(9)
 $shell = (Get-Process -Id $PID).Path # powershell.exe or pwsh.exe
 $work = Join-Path ([IO.Path]::GetTempPath()) ('mermdraw-installer-test-' + [Guid]::NewGuid().ToString('N'))
 $name = 'mermdraw-x86_64-pc-windows-msvc'
@@ -65,7 +66,7 @@ $server = $null
 try {
     $script:url = ([Uri](Join-Path $work 'releases')).AbsoluteUri
     New-Release (Join-Path $work 'releases\mermdraw\releases\latest\download')
-    New-Release (Join-Path $work 'releases\mermdraw\releases\download\v9.9.9')
+    New-Release (Join-Path $work "releases\mermdraw\releases\download\$tag")
     New-Release (Join-Path $work 'bad\mermdraw\releases\latest\download')
     Add-Content -LiteralPath (Join-Path $work "bad\mermdraw\releases\latest\download\$name.zip") -Value 'x'
     # a stand-in gh: exits with %FAKE_GH% (4 is gh's "not logged in")
@@ -88,22 +89,35 @@ try {
 
     # ------------------------------------------------------------ irm | iex, configured by environment variables
     $r = Invoke-Installer -Iex -Environment @{
-        MERMDRAW_INSTALL_VERSION = '9.9.9'; MERMDRAW_INSTALL_DIR = (Join-Path $work 'env-bin'); MERMDRAW_NO_MODIFY_PATH = '1'
+        MERMDRAW_INSTALL_VERSION = $tag.Substring(1); MERMDRAW_INSTALL_DIR = (Join-Path $work 'env-bin'); MERMDRAW_NO_MODIFY_PATH = '1'
     }
     if ($r.Code -ne 0) { Fail "the installer failed under Invoke-Expression: $($r.Out)" }
     Expect 'runs under Invoke-Expression, as irm | iex does' $r.Out "installed $version -> $work\env-bin\mermdraw.exe"
-    Expect 'MERMDRAW_INSTALL_VERSION picks that release' $r.Out "/mermdraw/releases/download/v9.9.9/$name.zip"
+    Expect 'MERMDRAW_INSTALL_VERSION picks that release' $r.Out "/mermdraw/releases/download/$tag/$name.zip"
 
     # ------------------------------------------------------------ replacing a mermdraw.exe that's running
     $server = Start-Process -FilePath (Join-Path $dir 'mermdraw.exe') -ArgumentList @("`"$work`"", '--no-open', '--new', '--port', '7931') -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds 1
-    $r = Invoke-Installer -Arguments @('-Dir', $dir, '-NoModifyPath', '-Version', 'v9.9.9')
+    $r = Invoke-Installer -Arguments @('-Dir', $dir, '-NoModifyPath', '-Version', $tag)
     if ($r.Code -ne 0) { Fail "could not replace a running mermdraw.exe: $($r.Out)" }
     Expect 'replaces a running mermdraw.exe' $r.Out "installed $version -> $dir\mermdraw.exe"
     Stop-Process -Id $server.Id -Force
     $server = $null
 
     # ------------------------------------------------------------ refusals: nothing is installed
+    $broken = Join-Path $work 'unrunnable\mermdraw\releases\latest\download'
+    $brokenStage = Join-Path $work "broken-stage\$name"
+    New-Item -ItemType Directory -Force -Path $broken, $brokenStage | Out-Null
+    Set-Content -LiteralPath (Join-Path $brokenStage 'mermdraw.exe') -Encoding Ascii -Value 'not a Windows executable'
+    Compress-Archive -Path $brokenStage -DestinationPath (Join-Path $broken "$name.zip")
+    $brokenHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $broken "$name.zip")).Hash.ToLowerInvariant()
+    Set-Content -LiteralPath (Join-Path $broken 'SHA256SUMS.txt') -Encoding Ascii -Value "$brokenHash  $name.zip"
+    $r = Invoke-Installer -Arguments @('-Dir', $dir, '-NoModifyPath') -Environment @{ MERMDRAW_INSTALL_URL = ([Uri](Join-Path $work 'unrunnable')).AbsoluteUri }
+    if ($r.Code -eq 0) { Fail 'installed a build that will not run' }
+    Expect 'restores the previous executable when a new one will not run' $r.Out 'the previous binary was restored'
+    if ((& (Join-Path $dir 'mermdraw.exe') --version | Out-String).Trim() -ne $version) { Fail 'the previous executable was not restored' }
+    Pass 'the previous executable still runs after a failed update'
+
     $r = Invoke-Installer -Arguments @('-Dir', (Join-Path $work 'c'), '-NoModifyPath') -Environment @{ MERMDRAW_INSTALL_URL = ([Uri](Join-Path $work 'bad')).AbsoluteUri }
     if ($r.Code -eq 0) { Fail 'a corrupted download was installed' }
     Expect "refuses a download that doesn't match SHA256SUMS.txt" $r.Out "checksum mismatch for $name.zip"

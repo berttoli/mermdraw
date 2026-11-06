@@ -28,6 +28,7 @@ sha256() { # FILE -> hex digest
 
 [[ -x "$BIN" ]] || fail "no executable at $BIN (build with: cargo build --release)"
 VERSION="$("$BIN" --version)"
+TAG="v${VERSION#mermdraw }"
 
 # the build install.sh should pick here, worked out separately from the script
 case "$(uname -s)" in
@@ -57,7 +58,7 @@ release() { # DIR
 URL="file://$WORK/releases"
 LATEST="$WORK/releases/mermdraw/releases/latest/download"
 release "$LATEST"
-release "$WORK/releases/mermdraw/releases/download/v9.9.9"
+release "$WORK/releases/mermdraw/releases/download/$TAG"
 BAD="file://$WORK/bad"
 release "$WORK/bad/mermdraw/releases/latest/download"
 printf 'x' >>"$WORK/bad/mermdraw/releases/latest/download/mermdraw-$TARGET.tar.gz"
@@ -112,15 +113,27 @@ pass ".zshrc has the PATH line once"
 printf '#!/bin/sh\necho "mermdraw 0.0.1"\n' >"$home/.local/bin/mermdraw"
 expect "an older version is updated" "$(run "$home" /bin/zsh --)" "updated mermdraw 0.0.1 → ${VERSION#mermdraw } at $home/.local/bin/mermdraw"
 
+# A checksum-valid archive can still hold a build that will not start on this machine.
+broken="$WORK/unrunnable/mermdraw/releases/latest/download"
+mkdir -p "$broken" "$WORK/broken-stage/mermdraw-$TARGET"
+printf '#!/bin/sh\nexit 1\n' >"$WORK/broken-stage/mermdraw-$TARGET/mermdraw"
+chmod +x "$WORK/broken-stage/mermdraw-$TARGET/mermdraw"
+tar -czf "$broken/mermdraw-$TARGET.tar.gz" -C "$WORK/broken-stage" "mermdraw-$TARGET"
+printf '%s  %s\n' "$(sha256 "$broken/mermdraw-$TARGET.tar.gz")" "mermdraw-$TARGET.tar.gz" >"$broken/SHA256SUMS.txt"
+if out="$(URL="file://$WORK/unrunnable" run "$home" /bin/zsh --)"; then fail "installed a build that will not run"; fi
+expect "restores the previous binary when a new build will not run" "$out" "the previous binary was restored"
+[[ "$("$home/.local/bin/mermdraw" --version)" == "$VERSION" ]] || fail "the previous binary was not restored"
+pass "the previous binary still runs after a failed update"
+
 # ---------------------------------------------------------------- options
-out="$(run "$WORK/home-v" /bin/zsh -- --version v9.9.9 --no-modify-path)"
-expect "--version picks that release" "$out" "$URL/mermdraw/releases/download/v9.9.9/mermdraw-$TARGET.tar.gz"
+out="$(run "$WORK/home-v" /bin/zsh -- --version "$TAG" --no-modify-path)"
+expect "--version picks that release" "$out" "$URL/mermdraw/releases/download/$TAG/mermdraw-$TARGET.tar.gz"
 expect "--no-modify-path says how to add the folder" "$out" "is not on your PATH; add it with: export PATH="
 [[ ! -e "$WORK/home-v/.zshrc" ]] || fail "--no-modify-path wrote .zshrc"
 pass "--no-modify-path leaves the startup files alone"
-expect "a version without its v works too" "$(run "$WORK/home-v" /bin/zsh -- --version=9.9.9 --no-modify-path)" "/download/v9.9.9/"
-out="$(run "$WORK/home-e" /bin/zsh MERMDRAW_INSTALL_VERSION=9.9.9 MERMDRAW_INSTALL_DIR="$WORK/env-bin" MERMDRAW_NO_MODIFY_PATH=1 --)"
-expect "environment variables set the version" "$out" "/download/v9.9.9/"
+expect "a version without its v works too" "$(run "$WORK/home-v" /bin/zsh -- --version="${TAG#v}" --no-modify-path)" "/download/$TAG/"
+out="$(run "$WORK/home-e" /bin/zsh MERMDRAW_INSTALL_VERSION="${TAG#v}" MERMDRAW_INSTALL_DIR="$WORK/env-bin" MERMDRAW_NO_MODIFY_PATH=1 --)"
+expect "environment variables set the version" "$out" "/download/$TAG/"
 expect "environment variables set the folder" "$out" "→ $WORK/env-bin/mermdraw"
 [[ ! -e "$WORK/home-e/.zshrc" ]] || fail "MERMDRAW_NO_MODIFY_PATH=1 wrote .zshrc"
 pass "MERMDRAW_NO_MODIFY_PATH=1 leaves the startup files alone"

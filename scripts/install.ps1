@@ -136,22 +136,42 @@ function Install-Mermdraw {
         $exe = Join-Path $folder 'mermdraw.exe'
         $previous = ''
         if (Test-Path -LiteralPath $exe) {
-            $previous = (& $exe --version 2>$null | Out-String).Trim()
+            try { $previous = (& $exe --version 2>$null | Out-String).Trim() } catch { $previous = '' }
         }
         # a running mermdraw.exe can't be overwritten, but it can be renamed out of the way
         $old = "$exe.old"
         Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
+        $hadOld = Test-Path -LiteralPath $exe
+        $movedOld = $false
         try {
-            if (Test-Path -LiteralPath $exe) { Move-Item -LiteralPath $exe -Destination $old -Force }
+            if ($hadOld) {
+                Move-Item -LiteralPath $exe -Destination $old -Force
+                $movedOld = $true
+            }
             Copy-Item -LiteralPath $bin -Destination $exe
+            $installed = (& $exe --version | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $installed.StartsWith('mermdraw ')) {
+                throw "the new build does not run on this machine"
+            }
+            if ($tag -and $installed -ne "mermdraw $($tag.Substring(1))") {
+                throw "the new build reports $installed instead of $($tag.Substring(1))"
+            }
         } catch {
-            throw "mermdraw installer: could not write to ${folder}: $($_.Exception.Message)`n  pass -Dir DIR for another folder"
+            $reason = $_.Exception.Message
+            if ($movedOld -or -not $hadOld) {
+                Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+            }
+            if ($movedOld) {
+                try {
+                    Move-Item -LiteralPath $old -Destination $exe -Force
+                } catch {
+                    throw "mermdraw installer: $reason; could not restore $old`n  move it back to $exe"
+                }
+                throw "mermdraw installer: $reason; the previous binary was restored"
+            }
+            throw "mermdraw installer: could not install in ${folder}: $reason`n  pass -Dir DIR for another folder"
         }
         Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
-        $installed = (& $exe --version | Out-String).Trim()
-        if ($LASTEXITCODE -ne 0 -or -not $installed) {
-            throw "mermdraw installer: installed $exe, but it doesn't run on this machine"
-        }
 
         $sessionPath = @($env:Path -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
         if ($sessionPath -contains $folder.TrimEnd('\')) {

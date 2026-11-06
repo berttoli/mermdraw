@@ -100,6 +100,12 @@ GitHub CLI (`gh`) is installed and logged in, it also verifies the build's signe
 `.bash_profile` or `.bashrc`, fish's `conf.d`, or `.profile`), or in your user PATH on Windows. Open a new terminal
 afterwards. Run it again to update.
 
+After installing, `mermdraw update --check` compares your version with the latest stable release without changing
+anything. `mermdraw update` offers to replace the executable you ran after showing its path and asking for confirmation;
+`mermdraw update --yes` makes the same choice explicitly in a script. It uses the installer checksum check and optional
+`gh` provenance check. Updates are never installed automatically. Restart any open editor after updating. If you
+installed with Cargo or a package manager, use that tool to manage its copy instead.
+
 | To | macOS and Linux | Windows (set before running) |
 | --- | --- | --- |
 | install a specific release | `… \| sh -s -- --version v0.2.0` | `$env:MERMDRAW_INSTALL_VERSION = "v0.2.0"` |
@@ -283,6 +289,8 @@ mermdraw addons [ls]         list installed addons
 mermdraw addons add NAME... [--version vX.Y.Z]
                              install official addons from github.com/berttoli/mermdraw-NAME
 mermdraw addons rm NAME...
+mermdraw update [--check | --yes]
+                             check for a newer stable release and choose whether to install it
 mermdraw NAME [ARGS…]        run the addon mermdraw-NAME with ARGS as given
 
   -p, --port N               default 7788 (next free port if taken)

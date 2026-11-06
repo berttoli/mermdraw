@@ -8,6 +8,7 @@ mod addons;
 mod icons;
 mod md;
 mod sha256;
+mod update;
 
 use std::collections::HashMap;
 use std::env;
@@ -28,7 +29,7 @@ const MAX_BODY: usize = 25 * 1024 * 1024;
 const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", "build", "vendor", "__pycache__"];
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"];
 /// Commands that are never looked up as addons.
-const BUILTINS: &[&str] = &["ls", "cat", "new", "write", "icons", "addons", "edit", "open", "help"];
+const BUILTINS: &[&str] = &["ls", "cat", "new", "write", "icons", "addons", "update", "edit", "open", "help"];
 /// Exit code of `write` when the file changed since the version it was given.
 const EXIT_CONFLICT: i32 = 3;
 /// The addon contract's version (docs/ADDONS.md): bumped only by a breaking change to the JSON commands.
@@ -113,6 +114,10 @@ struct Opts {
     limit: usize,
     /// `addons add --version`: a release tag
     tag: Option<String>,
+    /// `update --check`: report the latest stable release without installing it
+    update_check: bool,
+    /// `update --yes`: explicitly install without a terminal prompt
+    update_yes: bool,
 }
 
 fn main() {
@@ -138,6 +143,8 @@ fn main() {
         places: Vec::new(),
         limit: 50,
         tag: None,
+        update_check: false,
+        update_yes: false,
     };
     let mut pos: Vec<String> = Vec::new();
     let args: Vec<String> = raw
@@ -158,6 +165,8 @@ fn main() {
             "-h" | "--help" => return print_help(),
             "--version" if pos.first().map(String::as_str) == Some("addons") => opts.tag = Some(value()),
             "-V" | "--version" => return out(&format!("mermdraw {VERSION}")),
+            "--check" if pos.first().map(String::as_str) == Some("update") => opts.update_check = true,
+            "--yes" if pos.first().map(String::as_str) == Some("update") => opts.update_yes = true,
             "-p" | "--port" => opts.port = Some(value().parse().unwrap_or_else(|_| die("--port needs a number"))),
             "-t" | "--type" => opts.kind = value(),
             "--title" => opts.title = Some(value()),
@@ -198,6 +207,7 @@ fn main() {
         Some("new") => cmd_new(&pos[1..], &opts),
         Some("icons") => cmd_icons(&pos[1..], &opts),
         Some("addons") => cmd_addons(&pos[1..], &opts),
+        Some("update") => cmd_update(&pos[1..], &opts),
         Some("edit") | Some("open") => serve(pos.get(1).map(String::as_str), &opts),
         Some("help") => print_help(),
         other => serve(other, &opts),
@@ -235,6 +245,9 @@ USAGE
                               into ~/.config/mermdraw/addons, checked against the release's
                               SHA256SUMS.txt and, when gh is installed, its build attestation
   mermdraw addons rm NAME...
+  mermdraw update [--check | --yes]
+                              check the latest stable release and, if newer, ask before
+                              replacing this binary; --check only reports, --yes skips the prompt
   mermdraw NAME [ARGS...]     run the addon mermdraw-NAME (addons folder first, then PATH)
 
 OPTIONS
@@ -307,6 +320,15 @@ fn run_addon(bin: &Path, args: &[OsString]) -> ! {
     match cmd.status() {
         Ok(s) => process::exit(s.code().unwrap_or(1)),
         Err(e) => die(&format!("could not run {}: {e}", bin.display())),
+    }
+}
+
+fn cmd_update(args: &[String], opts: &Opts) {
+    if !args.is_empty() || (opts.update_check && opts.update_yes) {
+        die("usage: mermdraw update [--check | --yes]");
+    }
+    if let Err(e) = update::run(VERSION, opts.update_check, opts.update_yes) {
+        die(&e);
     }
 }
 

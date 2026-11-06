@@ -10,8 +10,8 @@ repository = "https://github.com/berttoli/mermdraw"
 homepage = "https://github.com/berttoli/mermdraw"
 keywords = ["mermaid", "diagram", "markdown", "architecture", "editor"]
 categories = ["command-line-utilities", "visualization"]
-# the binary embeds web/; tests and examples stay in the repo only
-include = ["/src", "/web", "/README.md", "/LICENSE", "/CHANGELOG.md"]
+# the binary embeds web/ and the installers; tests and examples stay in the repo only
+include = ["/src", "/web", "/scripts/install.sh", "/scripts/install.ps1", "/README.md", "/LICENSE", "/CHANGELOG.md"]
 
 [dependencies]
 # none on purpose: std-only HTTP server, file watcher and CLI

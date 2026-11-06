@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Manual updates.** `mermdraw update --check` reports whether a newer stable release exists; `mermdraw update`
+  confirms before replacing the current executable, and `--yes` supports an explicit scripted update.
 - **Editor server guard.** Browser writes from another origin are refused, including image uploads to the local
   server. Command-line clients without browser origin headers continue to work.
 - **Placing nodes from scripts and addons.** `cat --json` gives the diagram's canvas positions by node id
