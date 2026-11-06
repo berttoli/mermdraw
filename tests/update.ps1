@@ -7,6 +7,7 @@ $current = (& $Bin --version | Out-String).Trim()
 $work = Join-Path ([IO.Path]::GetTempPath()) ('mermdraw-update-test-' + [Guid]::NewGuid().ToString('N'))
 $oldUpdateUrl = $env:MERMDRAW_UPDATE_URL
 $oldInstallUrl = $env:MERMDRAW_INSTALL_URL
+$oldPath = $env:Path
 
 function Expect([string]$Description, [string]$Actual, [string]$Substring) {
     if (-not $Actual.Contains($Substring)) { throw "FAIL: ${Description}: expected '$Substring' in: $Actual" }
@@ -15,6 +16,13 @@ function Expect([string]$Description, [string]$Actual, [string]$Substring) {
 
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
+    # A local test archive has no GitHub attestation. Keep the installer test independent
+    # of whether the runner happens to have an authenticated gh installation.
+    $tools = Join-Path $work 'tools'
+    New-Item -ItemType Directory -Path $tools | Out-Null
+    Set-Content -LiteralPath (Join-Path $tools 'gh.cmd') -Value @('@echo off', 'exit /b 4') -Encoding Ascii
+    $env:Path = "$tools;$oldPath"
+
     $api = Join-Path $work 'latest.json'
     $env:MERMDRAW_UPDATE_URL = ([Uri]$api).AbsoluteUri
     Set-Content -LiteralPath $api -Value ('{"tag_name":"v' + $current.Substring(9) + '"}') -Encoding Ascii
@@ -62,5 +70,6 @@ try {
 } finally {
     $env:MERMDRAW_UPDATE_URL = $oldUpdateUrl
     $env:MERMDRAW_INSTALL_URL = $oldInstallUrl
+    $env:Path = $oldPath
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
