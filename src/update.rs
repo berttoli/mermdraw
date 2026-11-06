@@ -5,7 +5,9 @@ use crate::out;
 use std::env;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
+#[cfg(unix)]
+use std::process::Stdio;
 
 const RELEASE_API: &str = "https://api.github.com/repos/berttoli/mermdraw/releases/latest";
 
