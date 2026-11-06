@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Editor server guard.** Browser writes from another origin are refused, including image uploads to the local
+  server. Command-line clients without browser origin headers continue to work.
 - **Placing nodes from scripts and addons.** `cat --json` gives the diagram's canvas positions by node id
   (`"positions":{"web":[0,0],…}`), and `write FILE N --place ID:X,Y` sets a node's position in the layout comment, so
   a node an addon or agent adds can sit next to the nodes it connects to instead of wherever the editor finds room.

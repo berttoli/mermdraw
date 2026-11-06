@@ -45,6 +45,8 @@ sandboxed. To limit what that trusts:
 - It listens on `127.0.0.1`, never on other interfaces.
 - It answers only requests whose `Host` header is `127.0.0.1`, `localhost` or `[::1]`, which blocks DNS-rebinding
   attacks from web pages.
+- Browser write requests must come from the editor's own origin; uploads also require an editor request header so
+  cross-site forms cannot send them.
 - It serves and writes files only inside the folder it serves: paths with `..`, absolute paths and symlinks that lead
   outside are refused. It writes only markdown (`.md`, `.markdown`) and mermaid (`.mmd`, `.mermaid`) files, and
   accepts only image uploads, which it stores in `assets/` next to the document.

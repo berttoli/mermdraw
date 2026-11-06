@@ -221,7 +221,7 @@ pub fn parse_position(tok: &str) -> Option<Position> {
         let (int, frac) = digits.split_once('.').unwrap_or((digits, "0"));
         let ok = |d: &str| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit());
         if ok(int) && ok(frac) {
-            s.parse::<f64>().ok()
+            s.parse::<f64>().ok().filter(|n| n.is_finite())
         } else {
             None
         }
@@ -251,9 +251,14 @@ pub fn positions(source: &str) -> Vec<Position> {
     out
 }
 
-/// A coordinate as the editor writes it: a whole number, without a trailing `.0`.
+/// A coordinate as the editor's `Math.round` writes it: ties go toward positive infinity.
 pub fn coord(v: f64) -> String {
-    format!("{}", v.round() as i64)
+    let rounded = (v + 0.5).floor();
+    if rounded == 0.0 {
+        "0".into()
+    } else {
+        format!("{rounded:.0}")
+    }
 }
 
 /// `source` with `places` set in its layout comment: a position the comment already has is changed where it stands,
@@ -283,13 +288,143 @@ pub fn place(source: &str, places: &[Position]) -> Option<String> {
     Some(lines.join("\n"))
 }
 
-/// Whether the diagram (outside its `%%` comments) names `id`: an identifier with no letter, digit or `_` either side.
+/// Whether a flowchart names `id` as a node or subgraph, ignoring labels, edge text, metadata and comments.
 pub fn mentions(source: &str, id: &str) -> bool {
-    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
-    source
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("%%"))
-        .any(|l| l.match_indices(id).any(|(at, _)| !word(l[..at].chars().next_back()) && !word(l[at + id.len()..].chars().next())))
+    fn ident(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+
+    // Keep only the parts of a statement that can contain node syntax. In particular, an id in
+    // `a[ghost]`, `a["ghost"]`, `a -->|ghost| b`, or `a@{ label: "ghost" }` is not a node.
+    fn structure(line: &str) -> String {
+        let mut out = String::with_capacity(line.len());
+        let (mut closing, mut quoted, mut edge_label) = (Vec::new(), false, false);
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if quoted {
+                if c == '"' {
+                    quoted = false;
+                }
+            } else if c == '"' {
+                quoted = true;
+            } else if let Some(&end) = closing.last() {
+                if c == end {
+                    closing.pop();
+                } else if let Some(next) = match c {
+                    '[' => Some(']'),
+                    '(' => Some(')'),
+                    '{' => Some('}'),
+                    _ => None,
+                } {
+                    closing.push(next);
+                }
+            } else if c == '|' {
+                edge_label = !edge_label;
+                out.push(' ');
+            } else if edge_label {
+                continue;
+            } else if c == '%' && chars.peek() == Some(&'%') {
+                break;
+            } else if let Some(next) = match c {
+                '[' => Some(']'),
+                '(' => Some(')'),
+                '{' => Some('}'),
+                _ => None,
+            } {
+                closing.push(next);
+                out.push(if c == '{' && out.ends_with('@') { '{' } else { ' ' });
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    fn node_token(line: &str, id: &str) -> bool {
+        let mut chars = line.char_indices().peekable();
+        while let Some((start, c)) = chars.next() {
+            if !ident(c) {
+                continue;
+            }
+            let mut end = start + c.len_utf8();
+            while let Some(&(_, next)) = chars.peek() {
+                if ident(next) || (next == '-' && chars.clone().nth(1).is_some_and(|(_, c)| ident(c))) {
+                    let (at, c) = chars.next().unwrap();
+                    end = at + c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            if &line[start..end] != id {
+                continue;
+            }
+            let before = line[..start].trim_end();
+            let after = line[end..].trim_start();
+            if after.starts_with('@') && !after.starts_with("@{") {
+                continue;
+            } // an edge id
+            if before.is_empty()
+                || before.ends_with(';')
+                || before.ends_with('&')
+                || before.ends_with('>')
+                || ["---", "===", "~~~", "-.-", "<--", "--o", "--x", "==o", "==x", ".-o", ".-x"]
+                    .iter()
+                    .any(|suffix| before.ends_with(suffix))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    let mut first = true;
+    let mut frontmatter = false;
+    for line in source.lines() {
+        let mut line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if first {
+            first = false;
+            if line == "---" {
+                frontmatter = true;
+                continue;
+            }
+        }
+        if frontmatter {
+            if line == "---" {
+                frontmatter = false;
+            }
+            continue;
+        }
+        if line.starts_with("%%") {
+            continue;
+        }
+        let word = line.split(|c: char| c.is_whitespace() || c == ';').next().unwrap_or("");
+        if matches!(word, "end" | "direction" | "classDef" | "class" | "style" | "linkStyle" | "click" | "accTitle" | "accDescr") {
+            continue;
+        }
+        if word == "subgraph" {
+            line = line[word.len()..].trim_start();
+            let visible = structure(line);
+            if node_token(&visible, id) {
+                return true;
+            }
+            continue;
+        }
+        if matches!(word, "flowchart" | "flowchart-elk" | "graph") {
+            line = line[word.len()..].trim_start();
+            let first = line.split(|c: char| c.is_whitespace() || c == ';').next().unwrap_or("");
+            if matches!(first, "TB" | "TD" | "BT" | "RL" | "LR") {
+                line = line[first.len()..].trim_start();
+            }
+            line = line.trim_start_matches(';').trim_start();
+        }
+        if node_token(&structure(line), id) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The 1-based number of the first line of `source` that would end a block fenced with `fence` early.
@@ -413,6 +548,11 @@ mod tests {
         for bad in ["n1:5", ":1,2", "n1:1,2,3", "n1:1.,2", "n1:+1,2", "n1:1e3,2"] {
             assert_eq!(parse_position(bad), None, "{bad}");
         }
+        assert_eq!(parse_position(&format!("n1:{},0", "9".repeat(400))), None);
+        assert_eq!(coord(-1.5), "-1");
+        assert_eq!(coord(-0.5), "0");
+        assert_eq!(coord(0.5), "1");
+        assert_eq!(coord(1e20), "100000000000000000000");
     }
 
     #[test]
@@ -425,6 +565,21 @@ mod tests {
         assert_eq!(place("graph TD\n  a --> b", &[("a".into(), 1.0, 2.0)]), None, "no layout comment to add to");
         assert!(mentions("graph TD\n  api-->db[(DB)]", "db") && mentions("graph TD\n  api-->db", "api"));
         assert!(!mentions("graph TD\n  dbx --> y", "db") && !mentions("graph TD\n  %% db\n  a", "db"));
+        for src in [
+            "flowchart LR\n  a[ghost] --> b",
+            "flowchart LR\n  a[\"ghost\"] --> b",
+            "flowchart LR\n  a -->|ghost| b",
+            "flowchart LR\n  a -- ghost --> b",
+            "flowchart LR\n  a@{ label: \"ghost\" } --> b",
+            "flowchart LR\n  a --> b\n  classDef ghost fill:red",
+            "flowchart LR\n  a:::ghost --> b",
+            "---\ntitle: ghost\n---\nflowchart LR\n  a --> b",
+        ] {
+            assert!(!mentions(src, "ghost"), "{src}");
+        }
+        assert!(mentions("flowchart LR\n  subgraph cluster [Ghost]\n    a --> b\n  end", "cluster"));
+        assert!(mentions("flowchart LR; a --> b", "b"));
+        assert!(mentions("flowchart LR\n  db@{ icon: \"logos:postgresql\", label: \"DB\" }", "db"));
     }
 
     #[test]

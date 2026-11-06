@@ -1402,7 +1402,9 @@ let pendingImageFor = null;
 async function uploadImage(file) {
   const ext = (file.type.split('/')[1] || 'png').replace('svg+xml', 'svg').replace('jpeg', 'jpg');
   const name = file.name && file.name !== 'image.png' ? file.name : `image-${Date.now()}.${ext}`;
-  const r = await fetch(`/api/upload?file=${enc(S.path)}&name=${enc(name)}`, { method: 'POST', body: file }).catch(() => null);
+  const r = await fetch(`/api/upload?file=${enc(S.path)}&name=${enc(name)}`, {
+    method: 'POST', headers: { 'X-Mermdraw-Request': '1' }, body: file,
+  }).catch(() => null);
   if (!r?.ok) {
     toast(`Upload failed${r ? ': ' + (await r.text()) : ''}`);
     return null;

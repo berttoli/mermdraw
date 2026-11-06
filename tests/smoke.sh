@@ -147,6 +147,8 @@ expect "write --place adds a new node at the end" "$("$BIN" cat "$F")" "events:1
 cp "$F" "$WORK/before.md"
 expect "write --place refuses a node the diagram doesn't have" \
   "$(printf 'flowchart LR\n  a --> b\n' | "$BIN" write "$F" 1 --place ghost:1,2 --json || true)" "has no node ghost"
+expect "write --place refuses an id found only in a label" \
+  "$(printf 'flowchart LR\n  a[ghost] --> b\n' | "$BIN" write "$F" 1 --place ghost:1,2 --json || true)" "has no node ghost"
 cmp -s "$F" "$WORK/before.md" || fail "a refused --place changed the file"
 pass "a refused --place leaves the file alone"
 out="$(printf 'flowchart LR\n  a --> b\n  %%%% mermdraw:layout a:1,2 b:3,4\n' | "$BIN" write "$F" 1 --json)"
@@ -316,10 +318,18 @@ expect "cat --json reports the version the HTTP API uses" "$("$BIN" cat --json "
 
 # uploads
 printf 'PNG' >"$WORK/logo.png"
-expect "uploads images next to the document" "$(curl -fs -X POST --data-binary @"$WORK/logo.png" "$U/api/upload?file=architecture.md&name=logo.png")" '"path":"assets/logo.png"'
+expect "uploads images next to the document" "$(curl -fs -X POST -H 'X-Mermdraw-Request: 1' --data-binary @"$WORK/logo.png" "$U/api/upload?file=architecture.md&name=logo.png")" '"path":"assets/logo.png"'
 expect "serves uploaded files" "$(curl -fs "$U/raw/assets/logo.png")" "PNG"
-[[ "$(status POST "$U/api/upload?file=architecture.md&name=run.sh" --data-binary x)" == 400 ]] || fail "non-image upload should be 400"
+[[ "$(status POST "$U/api/upload?file=architecture.md&name=run.sh" -H 'X-Mermdraw-Request: 1' --data-binary x)" == 400 ]] || fail "non-image upload should be 400"
 pass "uploads accept images only"
+[[ "$(status POST "$U/api/upload?file=architecture.md&name=foreign.png" --data-binary x)" == 403 ]] || fail "upload without editor request header should be 403"
+[[ "$(status POST "$U/api/upload?file=architecture.md&name=foreign.png" -H 'X-Mermdraw-Request: 1' -H 'Origin: https://evil.example' --data-binary x)" == 403 ]] || fail "foreign Origin upload should be 403"
+[[ ! -e "$WORK/docs/assets/foreign.png" ]] || fail "foreign Origin wrote an image"
+[[ "$(status POST "$U/api/upload?file=architecture.md&name=foreign.png" -H 'X-Mermdraw-Request: 1' -H 'Sec-Fetch-Site: cross-site' --data-binary x)" == 403 ]] || fail "cross-site upload should be 403"
+[[ "$(status POST "$U/api/upload?file=architecture.md&name=local.png" -H 'X-Mermdraw-Request: 1' -H "Origin: $U" --data-binary x)" == 200 ]] || fail "same-origin upload should work"
+pass "uploads require a local browser origin"
+[[ "$(status PUT "$U/api/file?path=payments.md" -H 'Origin: https://evil.example' --data-binary attack)" == 403 ]] || fail "foreign Origin save should be 403"
+expect "foreign Origin cannot overwrite a document" "$(cat "$WORK/docs/payments.md")" "# Payments v2"
 
 # guards
 [[ "$(status GET "$U/api/info" -H 'Host: evil.example')" == 403 ]] || fail "foreign Host header should be 403"

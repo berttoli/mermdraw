@@ -327,13 +327,9 @@ fn json_opt(s: Option<&str>) -> String {
     s.map_or_else(|| "null".into(), json_str)
 }
 
-/// A coordinate as a JSON number: whole numbers without a fraction.
+/// A finite coordinate as a JSON number. `parse_position` rejects non-finite values.
 fn json_num(v: f64) -> String {
-    if v.fract() == 0.0 {
-        md::coord(v)
-    } else {
-        format!("{v}")
-    }
+    format!("{v}")
 }
 
 /// A diagram's JSON members: its 1-based number, the 1-based lines of its fences, and whether the source has a
@@ -1021,6 +1017,19 @@ fn handle(mut stream: TcpStream, st: &State) -> io::Result<()> {
     let host_name = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host);
     if !matches!(host_name, "127.0.0.1" | "localhost" | "[::1]") {
         return text(&mut stream, "403 Forbidden", "bad host");
+    }
+    // A browser on another origin can POST an image to loopback without reading the response.
+    // Host validation alone does not prevent that cross-origin write.
+    if matches!(method.as_str(), "POST" | "PUT")
+        && (headers.get("origin").is_some_and(|o| o != &format!("http://{host}"))
+            || headers.get("sec-fetch-site").is_some_and(|site| !matches!(site.as_str(), "same-origin" | "none")))
+    {
+        return text(&mut stream, "403 Forbidden", "bad origin");
+    }
+    // Uploads use POST, which a cross-site form can send. The editor supplies this non-safelisted
+    // header; a foreign page cannot add it without a CORS preflight (which this server refuses).
+    if method == "POST" && headers.get("x-mermdraw-request").map(String::as_str) != Some("1") {
+        return text(&mut stream, "403 Forbidden", "missing editor request header");
     }
     let len: usize = headers.get("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
     if len > MAX_BODY {

@@ -1,0 +1,42 @@
+name: Daily stability
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+      timezone: America/Los_Angeles
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Full CI
+    uses: ./.github/workflows/ci.yml
+
+  mcp:
+    name: Current mermdraw + mermdraw-mcp
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out mermdraw-mcp
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: berttoli/mermdraw-mcp
+          ref: main
+          path: mermdraw-mcp
+      - name: Toolchain (from rust-toolchain.toml)
+        run: rustup toolchain install && rustup show active-toolchain
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: |
+            .
+            mermdraw-mcp
+      - name: Build mermdraw
+        run: cargo build --release --locked
+      - name: Test mermdraw-mcp against current mermdraw
+        env:
+          MERMDRAW_CORE: ${{ github.workspace }}/target/release/mermdraw
+          MERMDRAW_E2E_REQUIRED: '1'
+        run: cargo test --locked --manifest-path mermdraw-mcp/Cargo.toml
