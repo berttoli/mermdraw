@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix updates launched from PowerShell 7 on Windows: the installer now uses Windows PowerShell's own module paths,
+  so checksum verification and archive extraction can load their built-in commands.
 - **Manual updates.** `mermdraw update --check` reports whether a newer stable release exists; `mermdraw update`
   confirms before replacing the current executable, and `--yes` supports an explicit scripted update.
 - **Editor server guard.** Browser writes from another origin are refused, including image uploads to the local
