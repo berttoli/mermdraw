@@ -203,6 +203,10 @@ fn install(tag: &str, dir: &Path) -> Result<(), String> {
         return Err(format!("{}: {e}", path.display()));
     }
     let result = Command::new("powershell.exe")
+        // When launched from pwsh through mermdraw, PS7's module paths would hide
+        // Windows PowerShell's built-in modules (including Get-FileHash). Let the
+        // installer shell construct its own defaults without changing our parent.
+        .env_remove("PSModulePath")
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
         .arg(&path)
         .env("MERMDRAW_INSTALL_VERSION", tag)
